@@ -503,6 +503,12 @@ const CHROME_WIDTH: usize = 41;
 /// A standard SVT teletext page is 24 visible rows + 1 status row = 25.
 const PAGE_HEIGHT_MAX: u16 = 25;
 
+/// Minimum row index for the hint bar. Most SVT pages have 24 content
+/// rows and our "Sidan finns inte" placeholder is also 24, so pinning
+/// the hint to row 24 keeps it in the same place across loading, loaded,
+/// and missing-page states. Taller pages (25 rows) push it one row down.
+const HINT_ROW_FLOOR: u16 = 24;
+
 /// Idle leading glyph for the input field. Marks "this is where typing
 /// goes" without inverting any colors (which would clash with the page's
 /// own row 0).
@@ -616,21 +622,17 @@ fn center_padded(text: &str, width: usize) -> String {
     format!("{:left$}{visible}{:right$}", "", "")
 }
 
-/// Paint a uniform black background covering the page body before any
-/// content is drawn on top. Eliminates the flicker that would otherwise
-/// show during the initial fetch (when `state.lines` is still empty) and
-/// fills the area between a short page and the hint bar with the same
-/// dark surface that `render_colored`'s cells emit.
-fn paint_black_canvas<W: Write>(out: &mut W) -> anyhow::Result<()> {
+/// Paint a uniform black background covering rows `0..rows` before any
+/// content is drawn on top. Eliminates flicker during the initial fetch
+/// (when `state.lines` is still empty) and fills the area between a
+/// short page and the hint bar with the same dark surface that
+/// `render_colored`'s cells emit. The caller picks `rows` so the canvas
+/// ends exactly at the hint row — no leftover black band below.
+fn paint_black_canvas<W: Write>(out: &mut W, rows: u16) -> anyhow::Result<()> {
     let row: String = " ".repeat(CHROME_WIDTH);
     let styled = row.on_truecolor(0, 0, 0).to_string();
-    // Inclusive upper bound: also paint `PAGE_HEIGHT_MAX` so the hint
-    // row gets cleared between frames. Without this, the hint left over
-    // at row PAGE_HEIGHT_MAX from the initial-load state would still be
-    // on-screen after the page finished loading and the hint shrank
-    // upward to `state.lines.len()`.
-    for row in 0..=PAGE_HEIGHT_MAX {
-        out.queue(MoveTo(0, row))?;
+    for r in 0..rows {
+        out.queue(MoveTo(0, r))?;
         out.queue(Print(&styled))?;
     }
     Ok(())
@@ -639,10 +641,18 @@ fn paint_black_canvas<W: Write>(out: &mut W) -> anyhow::Result<()> {
 /// Full redraw of the interactive screen. `out` is typically stdout in
 /// raw mode wrapped in a BufWriter; tests pass a `Vec<u8>`.
 pub fn draw<W: Write>(state: &State, out: &mut W) -> anyhow::Result<()> {
-    // Black canvas under everything. Short pages and initial-load
-    // (no-page-yet) states then have a uniform dark surface instead of
-    // terminal-default bg flickering through.
-    paint_black_canvas(out)?;
+    // Hint sits at row `state.lines.len()` (i.e. immediately after the
+    // last page row), floored to `HINT_ROW_FLOOR` so the loading state
+    // and a typical 24-row loaded page both keep the toolbar in the
+    // same place — no shift when the page finishes loading.
+    let hint_row = (state.lines.len() as u16).max(HINT_ROW_FLOOR);
+
+    // Black canvas covers exactly `0..hint_row`. Painting the same
+    // surface that `render_colored`'s cells emit means short pages don't
+    // show terminal-default bg leaking through between the last page
+    // row and the toolbar — and crucially we *don't* paint below the
+    // hint, so there's no leftover black band trailing under it.
+    paint_black_canvas(out, hint_row)?;
 
     // Page body starts at row 0. The page's own top row carries the page
     // number — we overwrite the leftmost cells with our input overlay so
@@ -683,21 +693,11 @@ pub fn draw<W: Write>(state: &State, out: &mut W) -> anyhow::Result<()> {
         .to_string();
     out.queue(Print(styled))?;
 
-    // Hint bar — pinned just below the last rendered page row so there's
-    // no leftover black gap between content and toolbar for pages
-    // shorter than `PAGE_HEIGHT_MAX`. During the initial-load state
-    // (no lines yet) we keep it at the bottom so the loading screen
-    // looks the way it always has.
-    // Content cases:
+    // Hint bar (already positioned above; just paint it). Content cases:
     //   1. Status message present → show it (priority).
     //   2. Multi-page → subpage selector "Page: >1< 2 3 4 …" with the
     //      selected indicator inverted inline.
     //   3. Otherwise → the static "↑↓ ←→ · Enter · q/Esc quit" hint.
-    let hint_row = if state.lines.is_empty() {
-        PAGE_HEIGHT_MAX
-    } else {
-        state.lines.len() as u16
-    };
     out.queue(MoveTo(0, hint_row))?;
     let hint_styled = if let Some(status) = state.status.as_deref() {
         let centered = center_padded(status, CHROME_WIDTH);
