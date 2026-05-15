@@ -433,18 +433,23 @@ const CHROME_WIDTH: usize = 41;
 /// A standard SVT teletext page is 24 visible rows + 1 status row = 25.
 const PAGE_HEIGHT_MAX: u16 = 25;
 
-/// Compose the input-row content. Layout shifted one cell right so col 0
-/// is a margin matching the visual breathing room around the page:
+/// Idle leading glyph for the input field. Marks "this is where typing
+/// goes" without inverting any colors (which would clash with the page's
+/// own row 0).
+const INPUT_CURSOR_GLYPH: char = '⏵';
+
+/// Compose the input-row content. The leading cell is the spinner while
+/// fetching and a triangle pointer (`⏵`) otherwise:
 ///
 /// ```text
-///   col: 0 1 2 3 4 5
-///        _ ⠏ _ 1 0 0    (fetching)
-///        _ _ _ 1 0 0    (idle)
+///   col: 0 1 2 3 4
+///        ⠏ _ 1 0 0    (fetching)
+///        ⏵ _ 1 0 0    (idle)
 /// ```
 fn input_row(state: &State) -> String {
     let glyph = match state.fetch {
         FetchState::Fetching { frame, .. } => SPINNER[frame % SPINNER.len()],
-        FetchState::Idle => ' ',
+        FetchState::Idle => INPUT_CURSOR_GLYPH,
     };
     let digits: String = if state.input_buf.is_empty() {
         format!("{:03}", state.current_page)
@@ -455,7 +460,7 @@ fn input_row(state: &State) -> String {
         }
         s
     };
-    format!(" {glyph} {digits}")
+    format!("{glyph} {digits}")
 }
 
 /// Compose the multi-page subpage selector "Page: >1< 2 3 4 …", centered
@@ -613,9 +618,9 @@ pub fn draw<W: Write>(state: &State, out: &mut W) -> anyhow::Result<()> {
     out.queue(Print(hint_styled))?;
 
     // Park the system cursor at the next typing position in the input
-    // zone. No Hide/Show pair — the terminal's native cursor stays visible
-    // throughout.
-    let cursor_col = 3 + (state.input_buf.len() as u16);
+    // zone (digits sit at cols 2..=4). No Hide/Show pair — the terminal's
+    // native cursor stays visible throughout.
+    let cursor_col = 2 + (state.input_buf.len() as u16);
     out.queue(MoveTo(cursor_col, 0))?;
     out.flush()?;
     Ok(())
@@ -1353,7 +1358,11 @@ mod tests {
         let mut buf: Vec<u8> = Vec::new();
         draw(&s, &mut buf).expect("draw");
         let out = String::from_utf8_lossy(&buf);
-        assert!(out.contains("  100"), "idle input row missing: {out:?}");
+        // Idle layout: triangle pointer + space + 3-digit page number.
+        assert!(
+            out.contains(&format!("{} 100", INPUT_CURSOR_GLYPH)),
+            "idle input row missing: {out:?}"
+        );
     }
 
     #[test]
