@@ -83,17 +83,18 @@ fn add_right_frame(img: &image::DynamicImage, pad_px: u32) -> image::DynamicImag
     image::DynamicImage::ImageRgb8(framed)
 }
 
-/// Target image width in terminal cells. SVT teletext is 40 cols natively;
-/// 60 leaves a little headroom for letterforms in graphics protocols while
-/// keeping the rendering compact.
-const TARGET_IMG_WIDTH: u32 = 60;
+/// Half-block fallback fills the terminal horizontally up to this cap. The
+/// SVT GIF is 520 px wide, and half-blocks pack 1 px wide × 2 px tall per
+/// cell, so at 160 cells the rendered page is roughly 160×95 cells —
+/// readable on a typical terminal without going absurdly tall.
+const HALFBLOCKS_MAX_WIDTH: u32 = 160;
 
-fn capped_width() -> u32 {
+fn halfblocks_width() -> u32 {
     let term = u32::from(terminal_cols());
     if term == 0 {
-        TARGET_IMG_WIDTH
+        HALFBLOCKS_MAX_WIDTH
     } else {
-        term.clamp(1, TARGET_IMG_WIDTH)
+        term.clamp(1, HALFBLOCKS_MAX_WIDTH)
     }
 }
 
@@ -101,12 +102,13 @@ fn config_for(p: DetectedProtocol) -> viuer::Config {
     match p {
         DetectedProtocol::Kitty | DetectedProtocol::Iterm => viuer::Config {
             absolute_offset: false,
-            width: Some(capped_width()),
+            // No width override: native protocols render at natural pixel
+            // size (~74 cells for the 520-px GIF on a typical font).
             ..viuer::Config::default()
         },
         DetectedProtocol::Halfblocks => viuer::Config {
             absolute_offset: false,
-            width: Some(capped_width()),
+            width: Some(halfblocks_width()),
             use_kitty: false,
             use_iterm: false,
             ..viuer::Config::default()
@@ -119,7 +121,6 @@ fn force_kitty_config() -> viuer::Config {
         absolute_offset: false,
         use_kitty: true,
         use_iterm: false,
-        width: Some(capped_width()),
         ..viuer::Config::default()
     }
 }
@@ -129,7 +130,6 @@ fn force_iterm_config() -> viuer::Config {
         absolute_offset: false,
         use_kitty: false,
         use_iterm: true,
-        width: Some(capped_width()),
         ..viuer::Config::default()
     }
 }
@@ -137,7 +137,7 @@ fn force_iterm_config() -> viuer::Config {
 fn force_blocks_config() -> viuer::Config {
     viuer::Config {
         absolute_offset: false,
-        width: Some(capped_width()),
+        width: Some(halfblocks_width()),
         use_kitty: false,
         use_iterm: false,
         ..viuer::Config::default()

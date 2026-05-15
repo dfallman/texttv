@@ -67,8 +67,11 @@ Requires Rust 1.85+ (edition 2024).
 ## Image mode
 
 `--mode auto` (or `kitty` / `iterm` / `blocks`) renders the page GIF that
-SVT embeds, capped at 60 terminal cells wide. The graphics protocol is
-auto-detected via [`viuer`](https://crates.io/crates/viuer):
+SVT embeds. Native graphics protocols (Kitty/iTerm) render at the GIF's
+natural pixel size — about 74 cells wide on a typical font. The
+half-block fallback fills the terminal horizontally, capped at 160 cells.
+The graphics protocol is auto-detected via
+[`viuer`](https://crates.io/crates/viuer):
 
 | Terminal       | Protocol used       | Status                                      |
 | -------------- | ------------------- | ------------------------------------------- |
