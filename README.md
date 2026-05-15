@@ -187,7 +187,9 @@ stderr and continues with built-in defaults.
 
 - **Default (text):** [`api.texttv.nu`](https://texttv.nu) — the
   community-run JSON proxy that preserves teletext color attributes.
-  `texttv` identifies itself with `app=texttv-rs` per their policy.
+  `texttv` identifies itself via the `app=texttvcliv<version>` query
+  parameter as their policy requests
+  (<https://texttv.nu/blogg/texttv-api>).
 - **Image modes:** [`svt.se/text-tv/<PAGE>`](https://www.svt.se/text-tv/) —
   the original SVT page, used for the embedded GIF.
 
