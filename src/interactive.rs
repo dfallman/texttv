@@ -290,7 +290,19 @@ pub fn handle_key(state: &mut State, ev: KeyEvent) -> Action {
             Action::None
         }
         KeyCode::Left => {
-            if state.current_page > 100 {
+            // If the cursor is on a subpage selector, ← cycles subpages
+            // (no fetch). Otherwise step to the previous page.
+            let on_subpage = state
+                .selected
+                .and_then(|s| state.links.get(s))
+                .filter(|l| l.kind == LinkKind::Subpage)
+                .map(|l| l.target as usize);
+            if let Some(cur) = on_subpage {
+                if cur > 0 {
+                    state.switch_subpage(cur - 1);
+                }
+                Action::None
+            } else if state.current_page > 100 {
                 state.input_buf.clear();
                 Action::StartFetch(state.current_page - 1)
             } else {
@@ -299,7 +311,17 @@ pub fn handle_key(state: &mut State, ev: KeyEvent) -> Action {
             }
         }
         KeyCode::Right => {
-            if state.current_page < 999 {
+            let on_subpage = state
+                .selected
+                .and_then(|s| state.links.get(s))
+                .filter(|l| l.kind == LinkKind::Subpage)
+                .map(|l| l.target as usize);
+            if let Some(cur) = on_subpage {
+                if cur + 1 < state.subpages.len() {
+                    state.switch_subpage(cur + 1);
+                }
+                Action::None
+            } else if state.current_page < 999 {
                 state.input_buf.clear();
                 Action::StartFetch(state.current_page + 1)
             } else {
@@ -307,7 +329,7 @@ pub fn handle_key(state: &mut State, ev: KeyEvent) -> Action {
                 Action::None
             }
         }
-        KeyCode::Enter => {
+        KeyCode::Enter | KeyCode::Char(' ') => {
             if let Some(sel) = state.selected
                 && let Some(link) = state.links.get(sel).cloned()
             {
@@ -1309,6 +1331,73 @@ mod tests {
         let action = handle_key(&mut s, key(KeyCode::Right));
         assert_eq!(action, Action::None);
         assert!(s.status.is_some());
+    }
+
+    #[test]
+    fn right_arrow_on_subpage_cycles_subpages_not_pages() {
+        let mut s = State::initial(328);
+        s.install_page(make_multipage(
+            328,
+            vec![vec![line(" ")], vec![line(" ")], vec![line(" ")]],
+        ));
+        // links: [InputField, Subpage(0), Subpage(1), Subpage(2)]
+        // ↓ wakes at first actionable link → Subpage(0).
+        handle_key(&mut s, key(KeyCode::Down));
+        let sel = s.selected.unwrap();
+        assert_eq!(s.links[sel].kind, LinkKind::Subpage);
+        assert_eq!(s.subpage_idx, 0);
+        // → cycles subpage forward, no fetch.
+        let action = handle_key(&mut s, key(KeyCode::Right));
+        assert_eq!(action, Action::None);
+        assert_eq!(s.subpage_idx, 1);
+        assert_eq!(s.current_page, 328);
+    }
+
+    #[test]
+    fn left_arrow_on_subpage_cycles_subpages_not_pages() {
+        let mut s = State::initial(328);
+        s.install_page(make_multipage(328, vec![vec![line(" ")], vec![line(" ")]]));
+        // Step onto a subpage selector and switch to subpage 1 first.
+        handle_key(&mut s, key(KeyCode::Down));
+        handle_key(&mut s, key(KeyCode::Right));
+        assert_eq!(s.subpage_idx, 1);
+        let action = handle_key(&mut s, key(KeyCode::Left));
+        assert_eq!(action, Action::None);
+        assert_eq!(s.subpage_idx, 0);
+        assert_eq!(s.current_page, 328);
+    }
+
+    #[test]
+    fn space_emits_start_fetch_on_page_link() {
+        let mut s = State::initial(100);
+        s.install_page(page_with_links());
+        handle_key(&mut s, key(KeyCode::Down));
+        let action = handle_key(&mut s, key(KeyCode::Char(' ')));
+        assert_eq!(action, Action::StartFetch(300));
+    }
+
+    #[test]
+    fn space_switches_subpage_when_subpage_selected() {
+        let mut s = State::initial(328);
+        s.install_page(make_multipage(328, vec![vec![line(" ")], vec![line(" ")]]));
+        // Step onto Subpage(0), then ↓ to Subpage(1), then Space to switch.
+        handle_key(&mut s, key(KeyCode::Down));
+        handle_key(&mut s, key(KeyCode::Down));
+        assert_eq!(s.links[s.selected.unwrap()].kind, LinkKind::Subpage);
+        let action = handle_key(&mut s, key(KeyCode::Char(' ')));
+        assert_eq!(action, Action::None);
+        assert_eq!(s.subpage_idx, 1);
+    }
+
+    #[test]
+    fn space_on_input_field_is_noop() {
+        let mut s = State::initial(100);
+        s.install_page(page_with_links());
+        handle_key(&mut s, key(KeyCode::Down));
+        handle_key(&mut s, key(KeyCode::Up));
+        assert_eq!(s.links[s.selected.unwrap()].kind, LinkKind::InputField);
+        let action = handle_key(&mut s, key(KeyCode::Char(' ')));
+        assert_eq!(action, Action::None);
     }
 
     #[test]
