@@ -226,6 +226,16 @@ pub enum Action {
     Quit,
 }
 
+/// First link index that isn't the `InputField` slot — used to wake
+/// selection from `None` so the user lands on a meaningful target in
+/// one keypress. Falls back to `Some(0)` (the InputField) when there
+/// are no other links, so ↑/↓ on an empty/placeholder page still does
+/// *something*.
+fn first_actionable_link(links: &[Link]) -> Option<usize> {
+    let pos = links.iter().position(|l| l.kind != LinkKind::InputField);
+    pos.or(if links.is_empty() { None } else { Some(0) })
+}
+
 /// Apply a key event to the state and return an action for the caller.
 /// Pure: never touches I/O, never spawns threads.
 pub fn handle_key(state: &mut State, ev: KeyEvent) -> Action {
@@ -261,17 +271,19 @@ pub fn handle_key(state: &mut State, ev: KeyEvent) -> Action {
         }
         KeyCode::Up => {
             state.selected = match state.selected {
-                // ↑ from no-selection wakes us up at the input slot
-                // (the first navigable target).
-                None if !state.links.is_empty() => Some(0),
+                // ↑/↓ from no-selection wakes at the first actionable
+                // link — skip past the always-present InputField slot
+                // so the user lands on something useful in one press.
+                // The InputField is still reachable via ↑ from the
+                // first page link for parity with the other targets.
+                None => first_actionable_link(&state.links),
                 Some(sel) => Some(sel.saturating_sub(1)),
-                None => None,
             };
             Action::None
         }
         KeyCode::Down => {
             state.selected = match state.selected {
-                None if !state.links.is_empty() => Some(0),
+                None => first_actionable_link(&state.links),
                 Some(sel) if sel + 1 < state.links.len() => Some(sel + 1),
                 other => other,
             };
@@ -1146,16 +1158,16 @@ mod tests {
     }
 
     #[test]
-    fn down_arrow_wakes_then_steps_through_links() {
+    fn down_arrow_wakes_at_first_page_link_skipping_input_slot() {
         let mut s = State::initial(100);
         s.install_page(page_with_links());
         // Fresh page → no selection.
         assert_eq!(s.selected, None);
         // links: [InputField, Page(300), Page(400)]
+        // ↓ from None skips the InputField and lands on the first page link.
         handle_key(&mut s, key(KeyCode::Down));
-        assert_eq!(s.selected, Some(0)); // input field
-        handle_key(&mut s, key(KeyCode::Down));
-        assert_eq!(s.selected, Some(1)); // Page(300)
+        assert_eq!(s.selected, Some(1));
+        assert_eq!(s.links[1].kind, LinkKind::Page);
         handle_key(&mut s, key(KeyCode::Down));
         assert_eq!(s.selected, Some(2)); // Page(400)
         // Saturating at last.
@@ -1164,18 +1176,18 @@ mod tests {
     }
 
     #[test]
-    fn up_arrow_wakes_then_steps_through_links() {
+    fn up_arrow_from_first_page_link_reaches_input_field() {
         let mut s = State::initial(100);
         s.install_page(page_with_links());
-        // ↑ from None also wakes selection at index 0.
+        // ↑ from None also wakes at the first page link (same as ↓).
         handle_key(&mut s, key(KeyCode::Up));
-        assert_eq!(s.selected, Some(0));
-        // Step forward then back.
-        handle_key(&mut s, key(KeyCode::Down));
         assert_eq!(s.selected, Some(1));
+        // From the first page link, ↑ steps back to the InputField slot
+        // so users can still reach it for parity.
         handle_key(&mut s, key(KeyCode::Up));
         assert_eq!(s.selected, Some(0));
-        // Saturating at first.
+        assert_eq!(s.links[0].kind, LinkKind::InputField);
+        // Saturating at the top.
         handle_key(&mut s, key(KeyCode::Up));
         assert_eq!(s.selected, Some(0));
     }
@@ -1184,8 +1196,7 @@ mod tests {
     fn enter_on_followable_link_emits_start_fetch() {
         let mut s = State::initial(100);
         s.install_page(page_with_links());
-        // Wake selection, then step past InputField to first page link.
-        handle_key(&mut s, key(KeyCode::Down));
+        // ↓ from None lands directly on the first page link.
         handle_key(&mut s, key(KeyCode::Down));
         let action = handle_key(&mut s, key(KeyCode::Enter));
         assert_eq!(action, Action::StartFetch(300));
@@ -1195,8 +1206,10 @@ mod tests {
     fn enter_on_input_field_is_noop() {
         let mut s = State::initial(100);
         s.install_page(page_with_links());
-        // ↓ once → InputField (index 0). Enter should be a no-op.
+        // ↓ wakes at first page link; ↑ steps back to the InputField.
         handle_key(&mut s, key(KeyCode::Down));
+        handle_key(&mut s, key(KeyCode::Up));
+        assert_eq!(s.links[s.selected.unwrap()].kind, LinkKind::InputField);
         let action = handle_key(&mut s, key(KeyCode::Enter));
         assert_eq!(action, Action::None);
     }
@@ -1215,8 +1228,7 @@ mod tests {
         let mut s = State::initial(100);
         // Row 0 is filtered out, so put the unfollowable link on row 1.
         s.install_page(make_page(100, vec![line(" "), line(" 099 ")]));
-        // ↓ to wake → InputField, ↓ to Page(99).
-        handle_key(&mut s, key(KeyCode::Down));
+        // ↓ wakes directly at the Page(99) link.
         handle_key(&mut s, key(KeyCode::Down));
         let action = handle_key(&mut s, key(KeyCode::Enter));
         assert_eq!(action, Action::None);
@@ -1370,8 +1382,7 @@ mod tests {
         ));
         assert_eq!(s.subpage_idx, 0);
         // links: [InputField, Page(300), Subpage(0), Subpage(1)]
-        // selected starts at None; ↓ to wake → 0, then ↓×3 to reach Subpage(1).
-        handle_key(&mut s, key(KeyCode::Down));
+        // ↓ from None lands on Page(300) (index 1); then ↓×2 to Subpage(1).
         handle_key(&mut s, key(KeyCode::Down));
         handle_key(&mut s, key(KeyCode::Down));
         handle_key(&mut s, key(KeyCode::Down));
@@ -1527,8 +1538,7 @@ mod tests {
     fn draw_emits_magenta_highlight_for_selected_page_link() {
         let mut s = State::initial(100);
         s.install_page(page_with_links());
-        // Wake selection and step past InputField onto first page link.
-        handle_key(&mut s, key(KeyCode::Down));
+        // ↓ from None lands directly on the first page link.
         handle_key(&mut s, key(KeyCode::Down));
         let sel = s.selected.expect("should have a selection");
         assert_eq!(s.links[sel].kind, LinkKind::Page);
