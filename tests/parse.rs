@@ -28,11 +28,7 @@ fn each_image_has_nonzero_dimensions() {
 #[test]
 fn extracts_non_empty_swedish_text() {
     let page = extract_page(PAGE_300, 300).expect("parse");
-    assert!(
-        page.text.len() > 50,
-        "text body too short: {:?}",
-        page.text
-    );
+    assert!(page.text.len() > 50, "text body too short: {:?}", page.text);
     let lower = page.text.to_lowercase();
     assert!(
         lower.contains('å')
@@ -61,8 +57,15 @@ fn empty_page_is_an_error() {
 fn texttv_nu_parses_lines() {
     let cp = parse_texttv_nu(PAGE_300_NU, 300).expect("parse");
     assert_eq!(cp.page_no, 300);
-    assert!(cp.lines.len() >= 20, "expected ~24 teletext rows, got {}", cp.lines.len());
-    assert!(!cp.plain.is_empty(), "plain text fallback should be populated");
+    assert!(
+        cp.lines.len() >= 20,
+        "expected ~24 teletext rows, got {}",
+        cp.lines.len()
+    );
+    assert!(
+        !cp.plain.is_empty(),
+        "plain text fallback should be populated"
+    );
 }
 
 #[test]

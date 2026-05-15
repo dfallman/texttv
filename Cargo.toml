@@ -30,6 +30,18 @@ dirs = "6"
 lto = "thin"
 strip = "symbols"
 
+[package.metadata.release]
+# Manual release flow: `cargo release patch` (or minor/major) bumps the
+# version, commits, and tags `vX.Y.Z`. Pushing the tag triggers
+# `.github/workflows/release.yml` which builds binaries and creates the
+# GitHub release. Neither cargo-publish nor git-push is automatic — that's
+# a deliberate human gate.
+publish = false
+push = false
+tag-prefix = ""
+tag-name = "v{{version}}"
+pre-release-commit-message = "release v{{version}}"
+
 [lints.rust]
 unsafe_code = "forbid"
 unused_must_use = "deny"

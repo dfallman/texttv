@@ -53,8 +53,7 @@ fn extract_text(doc: &Html) -> String {
     // SVT exposes the page body inside a screenreader-only container with a CSS
     // module class name like "Content_screenreaderOnly__3Cnkp". The hash suffix
     // changes between builds, so match on the stable prefix.
-    let reader_sel =
-        Selector::parse("div[class*=\"screenreaderOnly\"]").expect("static selector");
+    let reader_sel = Selector::parse("div[class*=\"screenreaderOnly\"]").expect("static selector");
     if let Some(node) = doc.select(&reader_sel).next() {
         return collect_text(node);
     }
@@ -219,10 +218,7 @@ fn lines_equivalent(a: &Line, b: &Line) -> bool {
         return false;
     }
     a.cells.iter().zip(&b.cells).all(|(x, y)| {
-        x.text == y.text
-            && x.fg == y.fg
-            && x.bg == y.bg
-            && x.mosaic_url == y.mosaic_url
+        x.text == y.text && x.fg == y.fg && x.bg == y.bg && x.mosaic_url == y.mosaic_url
     })
 }
 
