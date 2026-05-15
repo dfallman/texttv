@@ -1,20 +1,24 @@
-//! Lightweight timing instrumentation for development.
+//! Lightweight timing instrumentation.
 //!
-//! Enabled automatically in debug builds (`cargo run --`) so iterating is
-//! fast to observe. Disabled in release builds (`cargo install`) unless
-//! `TEXTTV_TIMINGS=1` is set in the environment — handy when chasing a
-//! perf regression on an installed binary without rebuilding.
+//! Off by default. Enable with `--verbose` (or `-v`), `verbose: true` in
+//! `~/.config/texttv/config.yaml`, or `TEXTTV_TIMINGS=1` in the environment
+//! — the env var is kept for scripts that want to flip timings on without
+//! rewriting their argv.
 //!
 //! Output goes to stderr so it doesn't pollute the rendered page on stdout.
 
-use std::sync::OnceLock;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Instant;
 
+static ENABLED: AtomicBool = AtomicBool::new(false);
+
+/// Call once at startup from main.rs to wire up the flag/env/config result.
+pub fn set_enabled(b: bool) {
+    ENABLED.store(b, Ordering::Relaxed);
+}
+
 pub fn enabled() -> bool {
-    static FLAG: OnceLock<bool> = OnceLock::new();
-    *FLAG.get_or_init(|| {
-        cfg!(debug_assertions) || std::env::var_os("TEXTTV_TIMINGS").is_some()
-    })
+    ENABLED.load(Ordering::Relaxed)
 }
 
 /// Wrap a closure with a stderr "[texttv] <label> (<n>ms)" trace line when

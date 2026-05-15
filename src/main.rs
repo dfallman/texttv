@@ -72,6 +72,12 @@ fn run(args: Args) -> Result<(), AppError> {
         Config::default()
     });
 
+    timing::set_enabled(
+        args.verbose
+            || cfg.verbose.unwrap_or(false)
+            || std::env::var_os("TEXTTV_TIMINGS").is_some(),
+    );
+
     let piped = !stdout_is_tty();
     // Precedence: CLI flag > config file > built-in default. NO_COLOR env and
     // a piped stdout always force color off regardless.

@@ -100,6 +100,12 @@ pub struct Args {
     /// Print the detected rendering protocol to stderr before drawing.
     #[arg(long)]
     pub debug_protocol: bool,
+
+    /// Emit per-phase timing traces on stderr. Useful for performance
+    /// debugging. Can also be enabled via `verbose: true` in the config
+    /// file or `TEXTTV_TIMINGS=1` in the environment.
+    #[arg(short, long)]
+    pub verbose: bool,
 }
 
 fn parse_page(s: &str) -> Result<u16, String> {
