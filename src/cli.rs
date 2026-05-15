@@ -35,9 +35,11 @@ pub struct Args {
     #[arg(long, value_enum, default_value_t = Mode::Text)]
     pub mode: Mode,
 
-    /// Data source.
-    #[arg(long, value_enum, default_value_t = Source::Svt)]
-    pub source: Source,
+    /// Data source. Defaults to texttv-nu for text mode (rich color), svt for
+    /// image modes. Override only for debugging or to fall back when the
+    /// preferred source is unreachable.
+    #[arg(long, value_enum)]
+    pub source: Option<Source>,
 
     /// Disable ANSI color in text mode.
     #[arg(long)]

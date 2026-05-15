@@ -147,36 +147,76 @@ fn terminal_cols() -> u16 {
     }
 }
 
-pub fn render_text(text: &str, color: bool, out: &mut dyn Write) -> Result<()> {
-    if !color {
-        writeln!(out, "{text}")?;
-        return Ok(());
-    }
-    for line in text.lines() {
-        if is_heading(line) {
-            writeln!(out, "\x1b[1;33m{line}\x1b[0m")?;
+pub fn render_text(text: &str, out: &mut dyn Write) -> Result<()> {
+    writeln!(out, "{text}")?;
+    Ok(())
+}
+
+/// Render the colored, optionally double-height teletext line stream.
+///
+/// `color` enables ANSI truecolor escapes. `double_height` enables DEC private
+/// escapes (`ESC # 3` top half, `ESC # 4` bottom half) for lines marked DH. The
+/// two flags travel together when the caller wants a "plain" render — see
+/// main.rs.
+pub fn render_colored(
+    lines: &[crate::parse::Line],
+    color: bool,
+    double_height: bool,
+    out: &mut dyn Write,
+) -> Result<()> {
+    for line in lines {
+        if double_height && line.double_height {
+            // DEC double-height: the same character row is emitted twice, once
+            // with ESC#3 (top half), once with ESC#4 (bottom half). Conforming
+            // terminals (Kitty, Ghostty, WezTerm, iTerm2, xterm) render the
+            // pair as a single visually-tall row.
+            write_line(line, color, "\x1b#3", out)?;
+            write_line(line, color, "\x1b#4", out)?;
         } else {
-            writeln!(out, "{line}")?;
+            write_line(line, color, "", out)?;
         }
     }
     Ok(())
 }
 
-fn is_heading(line: &str) -> bool {
-    let trimmed = line.trim();
-    if trimmed.is_empty() || trimmed.len() > 40 {
-        return false;
+fn write_line(
+    line: &crate::parse::Line,
+    color: bool,
+    prefix: &str,
+    out: &mut dyn Write,
+) -> Result<()> {
+    use owo_colors::OwoColorize;
+
+    if !prefix.is_empty() {
+        out.write_all(prefix.as_bytes())?;
     }
-    let mut saw_alpha = false;
-    for c in trimmed.chars() {
-        if c.is_alphabetic() {
-            saw_alpha = true;
-            if !c.is_uppercase() {
-                return false;
-            }
+    for cell in &line.cells {
+        let render_text: String = if cell.mosaic {
+            // Replace mosaic placeholder with a space of equal width; we lose the
+            // block pattern but keep the background fill so layout survives.
+            " ".repeat(cell.text.chars().count().max(1))
+        } else {
+            cell.text.clone()
+        };
+        if color {
+            let (fr, fg, fb) = cell.fg.rgb();
+            let (br, bg, bb) = cell.bg.rgb();
+            write!(
+                out,
+                "{}",
+                render_text
+                    .truecolor(fr, fg, fb)
+                    .on_truecolor(br, bg, bb)
+            )?;
+        } else {
+            out.write_all(render_text.as_bytes())?;
         }
     }
-    saw_alpha
+    if color {
+        out.write_all(b"\x1b[0m")?;
+    }
+    out.write_all(b"\n")?;
+    Ok(())
 }
 
 pub fn stdout_is_tty() -> bool {

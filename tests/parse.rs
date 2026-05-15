@@ -1,9 +1,11 @@
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 
-use texttv::parse::extract_page;
+use texttv::parse::{TtColor, extract_page, parse_texttv_nu};
 
 const PAGE_300: &str = include_str!("fixtures/page-300.html");
 const PAGE_EMPTY: &str = include_str!("fixtures/page-empty.html");
+const PAGE_300_NU: &str = include_str!("fixtures/page-300.texttv-nu.json");
+const PAGE_200_NU: &str = include_str!("fixtures/page-200.texttv-nu.json");
 
 #[test]
 fn extracts_at_least_one_subpage_image() {
@@ -50,5 +52,49 @@ fn empty_page_is_an_error() {
     assert!(
         lower.contains("not available") || lower.contains("no subpage"),
         "unexpected error: {msg}"
+    );
+}
+
+// -------- texttv.nu colored parser tests --------
+
+#[test]
+fn texttv_nu_parses_lines() {
+    let cp = parse_texttv_nu(PAGE_300_NU, 300).expect("parse");
+    assert_eq!(cp.page_no, 300);
+    assert!(cp.lines.len() >= 20, "expected ~24 teletext rows, got {}", cp.lines.len());
+    assert!(!cp.plain.is_empty(), "plain text fallback should be populated");
+}
+
+#[test]
+fn texttv_nu_top_row_has_yellow_svt_text() {
+    let cp = parse_texttv_nu(PAGE_300_NU, 300).expect("parse");
+    // The header row contains a cell with yellow foreground reading "SVT Text".
+    let top = &cp.lines[0];
+    let yellow_cell = top
+        .cells
+        .iter()
+        .find(|c| c.fg == TtColor::Yellow && c.text.contains("SVT"))
+        .expect("expected a yellow SVT Text cell on the top row");
+    assert!(yellow_cell.text.contains("SVT Text"));
+}
+
+#[test]
+fn texttv_nu_swedish_characters_pass_through() {
+    let cp = parse_texttv_nu(PAGE_300_NU, 300).expect("parse");
+    let joined: String = cp
+        .lines
+        .iter()
+        .flat_map(|l| l.cells.iter())
+        .map(|c| c.text.as_str())
+        .collect();
+    assert!(joined.to_lowercase().contains('å') || joined.contains("Åberg"));
+}
+
+#[test]
+fn texttv_nu_detects_double_height() {
+    let cp = parse_texttv_nu(PAGE_200_NU, 200).expect("parse");
+    assert!(
+        cp.lines.iter().any(|l| l.double_height),
+        "page 200 fixture should contain at least one double-height line"
     );
 }
