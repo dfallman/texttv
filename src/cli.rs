@@ -117,9 +117,11 @@ pub struct Args {
     pub list: bool,
 
     /// Launch the interactive page browser (same as running bare
-    /// `texttv`). Renders page 100, lets you type page numbers, and
-    /// arrow-key navigate three-digit links found on the rendered page.
-    /// Esc quits.
+    /// `texttv`). Type 3 digits to jump; ↑↓ to move between links; ←→
+    /// for page ±1 (or to cycle subpages when on a multi-page selector);
+    /// Enter or Space to follow; q or Esc to quit. Starts at page 100
+    /// unless an explicit PAGE is also given. Forces teletext rendering;
+    /// `--mode` and `--source` are ignored.
     #[arg(short = 'i', long)]
     pub interactive: bool,
 
