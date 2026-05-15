@@ -214,7 +214,7 @@ pub fn render_colored(
     Ok(())
 }
 
-fn is_blank_line(line: &crate::parse::Line) -> bool {
+pub(crate) fn is_blank_line(line: &crate::parse::Line) -> bool {
     line.cells
         .iter()
         .all(|c| !c.is_mosaic() && c.text.chars().all(char::is_whitespace))
