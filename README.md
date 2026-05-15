@@ -11,30 +11,28 @@ Ghostty, etc.)
 
 ## Usage
 `texttv` is simple to use out of the box and doesn't require any particular configuration
-in most terminals to get started. To use, simply type `textv <PAGE>` (such as `texttv 100`). 
+in most terminals to get started. 
 
-```bash
-texttv 100              # Front page, latest news overview
-texttv 300              # Sports news
-texttv 400              # Weather
-texttv --list           # Show some named sections
-```
+The app has got two different modes, interactive and page view.
 
-`PAGE` can be any integer between `100..=999`. Note that all pages aren't available at all
-times. If you enter a page that's not avaialable, `texttv` will tell you so.
+Interactive mode opens a Tet-TV browser in the terminal and allows you to navigate the teletext pages using familiar inputs. Type the page number to go to tht page, use your arrow keys left and right to go to next/previous page, use up and down to select links on the page, and enter to select. Press `Esc` to quit.
 
-`texttv` is highly configurable, so the above is only the basic operation. Here are some
-examples of typical options (see below for details):
+Page view mode, on the other hand, is a truly text-based page view that displays a single page and then exits immediately. Type `texttv 360` to view page 360, for example. I wonder how those Birch Leaves are going... oh, they're not there any more?!
+
+`texttv` is easy to use out of the box but also highly configurable, so the above is only the basic operation. Here are some
+examples of a few typical options (see below for details):
 
 ```
+texttv
 texttv 300 --mode teletext
 texttv 101 --mode iterm --size small --source svt --verbose 
 ```
 
-The first example shows page 300 but overrides the default rendering mode (see below) to 
-teletext mode, which draws the page as text+ANSI.
+The first example starts texttv in the interactive mode, which allows you to navigate through pages using arrow keys and enter to select. By default, it uses the `teletext` mode.
 
-The second example enforces iTerm2's default rendering mode (image), outputs it in small
+The second example shows page 300 but overrides the default rendering mode (see below) to `teletext` mode, which draws the page as text+ANSI.
+
+The third example enforces iTerm2's default rendering mode (image), outputs it in small
 size, enforces the source to be SVT, and shows verbose logging output in the console.
 
 
@@ -93,7 +91,7 @@ Requires Rust 1.85+ (edition 2024). Use [Rustup](https://rustup.rs/) rather than
 
 | Flag | Meaning |
 | --- | --- |
-| `PAGE` | The page number. `100..=999`. |
+| `PAGE` | The page number. 100 and 999. |
 | `--mode {teletext,auto,kitty,iterm,blocks}` | Rendering path. Default depends on your terminal (see the matrix below). |
 | `--size {tiny,small,medium,large,xl,full}` | Width for image modes. Default `medium` (60 cells). Ignored in teletext mode. |
 | `--source {texttv-nu,svt}` | Data source. Defaults to `texttv-nu` for teletext (it exposes the color attributes we need to reconstruct the page), `svt` for image modes. |
