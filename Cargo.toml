@@ -8,7 +8,7 @@ description = "Render SVT Text-TV (Swedish public-television teletext) pages in 
 readme = "README.md"
 repository = "https://github.com/dfallman/texttv"
 homepage = "https://github.com/dfallman/texttv"
-license = "MIT OR Apache-2.0"
+license = "MIT"
 keywords = ["teletext", "svt", "cli", "terminal", "tv"]
 categories = ["command-line-utilities"]
 
