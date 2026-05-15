@@ -1,46 +1,45 @@
 # texttv
 
-Render [SVT Text-TV](https://www.svt.se/text-tv/) pages in your terminal,
-with full fidelity to the original 40-column teletext layout — real text,
-real colors.
+A small command-line reader for [SVT Text-TV](https://www.svt.se/text-tv/) —
+Sweden's public-service teletext. Pages 100 to 999, in your terminal.
 
 ```bash
-texttv 300              # Sport
-texttv 100              # News index
-texttv 400              # Weather
-texttv 300 --no-color   # Plain mono, grep-friendly
-texttv 300 --mode auto  # Render the page bitmap via your terminal's graphics protocol
-texttv --list           # Index of well-known section pages
+texttv 300              # sport
+texttv 100              # news index
+texttv 400              # weather
+texttv --list           # named sections
 ```
 
 `PAGE` is any integer in `100..=999`.
 
-## Examples
+## What it shows you
 
-```  ┌──────────────────────────────────┬───────────────────────────────┬─────────────────────┐  │             Terminal             │       How it's detected       │      Protocol       │  ├──────────────────────────────────┼───────────────────────────────┼─────────────────────┤  │ Kitty                            │ $TERM contains kitty          │ Kitty graphics      │  ├──────────────────────────────────┼───────────────────────────────┼─────────────────────┤  │ Ghostty                          │ $TERM contains ghostty        │ Kitty graphics      │  ├──────────────────────────────────┼───────────────────────────────┼─────────────────────┤  │ iTerm2                           │ $TERM_PROGRAM=iTerm.app       │ iTerm2 inline image │  ├──────────────────────────────────┼───────────────────────────────┼─────────────────────┤  │ WezTerm                          │ $TERM_PROGRAM=WezTerm         │ iTerm2 inline image │  ├──────────────────────────────────┼───────────────────────────────┼─────────────────────┤  │ mintty (Cygwin/MSYS2 on Windows) │ $TERM_PROGRAM contains mintty │ iTerm2 inline image │  ├──────────────────────────────────┼───────────────────────────────┼─────────────────────┤  │ Rio                              │ $TERM_PROGRAM contains rio    │ iTerm2 inline image │  ├──────────────────────────────────┼───────────────────────────────┼─────────────────────┤  │ Warp                             │ $TERM_PROGRAM=WarpTerminal    │ iTerm2 inline image │  └──────────────────────────────────┴───────────────────────────────┴─────────────────────┘
+`texttv` has two ways to render a page. The right one for your terminal is
+picked automatically, and you can always override it.
+
+**Teletext mode** (the default for most terminals) reconstructs the original
+40-column page as real terminal text: the 8 teletext colors as ANSI
+truecolor, bold double-height headings, Unicode sextants for the mosaic
+block-characters (the SVT logo, sport icons, weather symbols, navigation
+borders). The text is real text — copyable, grep-able, narrow.
+
+**Image mode** asks your terminal to draw the original page GIF that SVT
+itself serves. You get pixel-perfect rendering, but lose selectable text.
+This is the default in terminals with a native graphics protocol — Kitty,
+Ghostty, WezTerm — and available everywhere else via `--mode auto`. On
+half-block-only terminals (Apple Terminal, Alacritty, Windows Terminal,
+...) image mode falls back to a Unicode-half-block rendering, which is
+considerably worse than the teletext text path; the default stays text.
+
+Pick explicitly with `--mode`:
+
+```bash
+texttv 300 --mode teletext       # force the text render
+texttv 300 --mode auto           # render the GIF via whichever graphics protocol your terminal supports
+texttv 300 --mode kitty          # force Kitty graphics protocol
+texttv 300 --mode iterm          # force iTerm2 inline-image protocol
+texttv 300 --mode blocks         # force the half-block fallback
 ```
-```
-  cargo run -- 300                                    # text mode (default)  cargo run -- 300 --mode auto                        # render the GIF — should pick Kitty graphics  cargo run -- 300 --mode auto --debug-protocol       # confirms 'detected: kitty' on stderr  cargo run -- 300 --no-color                         # plain mono  cargo run -- 200 --mode auto                        # has double-height; also good for image diff  cargo run --release -- 300 --mode auto              # optimized build (avoids debug-mode slowness)
-```
-
-## How it works
-
-`texttv` picks a sensible default mode based on your terminal:
-
-- **Native graphics terminals** (Kitty, Ghostty, WezTerm) → image render
-  via their native protocol. The GIF SVT embeds is fetched from
-  `svt.se/text-tv/<PAGE>` and drawn at natural pixel size.
-- **Everything else** (iTerm2, Apple Terminal, Alacritty, Windows Terminal,
-  foot, mlterm, …) → colored teletext reproduction. Data comes from the
-  [`api.texttv.nu`](https://texttv.nu) JSON feed, which exposes per-cell
-  color attributes that the official SVT site strips. We use ANSI truecolor
-  for the 8 teletext primaries.
-
-iTerm2 falls into the teletext-default bucket even though it supports its
-own inline-image protocol — the teletext reproduction reads better there.
-Explicit `--mode auto` still works in iTerm2 if you want the bitmap.
-
-Pass `--mode {teletext,auto,kitty,iterm,blocks}` to override.
 
 ## Install
 
@@ -50,155 +49,110 @@ cargo install --path .
 
 Requires Rust 1.85+ (edition 2024).
 
-## Flags
+## Options
 
-| Flag                                    | Meaning                                                                         |
-| --------------------------------------- | ------------------------------------------------------------------------------- |
-| `--mode {teletext,auto,kitty,iterm,blocks}` | Pick the rendering path. If unset, picks `auto` on Kitty / Ghostty / WezTerm and `teletext` everywhere else. |
-| `--size {tiny,small,medium,large,xl,full}` | Render size for image modes. Default `medium`. Ignored in teletext mode.     |
-| `--no-color`                            | Strip ANSI color and the right-edge frame; plain mono.                          |
-| `--no-padding`                          | Drop the blank rows above and below the rendered page (padding is on by default). |
-| `--list`                                | Print the section index and exit.                                               |
-| `--source {svt,texttv-nu}`              | Override the data source. Default: `texttv-nu` for teletext mode, `svt` for image modes. |
-| `--debug-protocol`                      | Print the detected graphics protocol on stderr before drawing.                  |
-| `--help`, `--version`                   | Standard.                                                                       |
+| Flag | Meaning |
+| --- | --- |
+| `PAGE` | The page number. `100..=999`. |
+| `--mode {teletext,auto,kitty,iterm,blocks}` | Rendering path. Default depends on your terminal (see the matrix below). |
+| `--size {tiny,small,medium,large,xl,full}` | Width for image modes. Default `medium` (60 cells). Ignored in teletext mode. |
+| `--source {texttv-nu,svt}` | Data source. Defaults to `texttv-nu` for teletext (it exposes the color attributes we need to reconstruct the page), `svt` for image modes. |
+| `--no-color` | Strip ANSI color and the right-edge frame. Plain mono. |
+| `--no-padding` | Drop the blank rows above and below the page. On by default. |
+| `--list` | Print the named-section index and exit. |
+| `--debug-protocol` | Echo the detected graphics protocol on stderr before drawing. |
+| `--verbose` / `-v` | Per-phase timing traces on stderr. Also enabled by `TEXTTV_TIMINGS=1`. |
+| `--help` / `--version` | Standard. |
 
-## Fidelity
+Image-mode sizing (`--size`):
 
-- **Colors** — the 8 teletext primaries (black, red, green, yellow, blue,
-  magenta, cyan, white) emitted as ANSI truecolor escapes via
-  [`owo-colors`](https://crates.io/crates/owo-colors).
-- **Double-height** — the parser still detects `DH` (double-height) lines,
-  but the renderer emits them at single height. DEC's `ESC#3`/`ESC#4`
-  escapes work on most terminals but not all; when they don't, the line
-  shows up duplicated, which is worse than the lost visual effect. The
-  `Line.double_height` flag is preserved in case we add a different
-  presentation (bold, underline, …) in the future.
-- **Mosaic graphics** — the 2×3 sub-cell mosaic block characters (SVT
-  logo, sport icons, weather symbols, navigation borders) are fetched on
-  first encounter from texttv.nu, decoded, and mapped to Unicode
-  *sextant* characters in the "Symbols for Legacy Computing" block
-  (U+1FB00–U+1FB3B). Falls back to colored spaces if a fetch fails.
-  Decoded patterns persist to `$XDG_CACHE_HOME/texttv/mosaics/` so a
-  given mosaic hash is only ever decoded once across all runs.
+| value | cells |
+| --- | --- |
+| `tiny` | 30 |
+| `small` | 45 |
+| **`medium`** | **60 (default)** |
+| `large` | 90 |
+| `xl` | 120 |
+| `full` | terminal width, capped at 4000 |
 
-## Image mode
+## Terminal matrix
 
-`--mode auto` (or `kitty` / `iterm` / `blocks`) renders the page GIF
-that SVT embeds. The width is set by `--size`:
+Defaults vary by terminal. You can always override with `--mode`.
 
-| `--size` | Cells wide |
-| -------- | ---------- |
-| `tiny`   | 30         |
-| `small`  | 45         |
-| `medium` | 60 (default) |
-| `large`  | 90         |
-| `xl`     | 120        |
-| `full`   | terminal width (capped at 4000) |
+| Terminal | Default | Image-mode protocol |
+| --- | --- | --- |
+| Kitty | image | Kitty graphics (true pixels) |
+| Ghostty | image | Kitty graphics (true pixels) |
+| WezTerm | image | iTerm2 inline (true pixels) |
+| iTerm2 | **teletext** (use `--mode auto` for the bitmap) | iTerm2 inline (true pixels) |
+| Apple Terminal | teletext | half-blocks fallback |
+| Alacritty | teletext | half-blocks fallback |
+| Windows Terminal | teletext | half-blocks fallback |
+| foot / mlterm | teletext | half-blocks fallback (Sixel is on the roadmap) |
 
-The graphics protocol is auto-detected via
-[`viuer`](https://crates.io/crates/viuer):
+`texttv 300 --debug-protocol` reports the detected protocol on stderr if
+you're curious.
 
-| Terminal       | Protocol used       | Status                                      |
-| -------------- | ------------------- | ------------------------------------------- |
-| Kitty          | Kitty graphics      | First-class — native pixel rendering        |
-| Ghostty        | Kitty graphics      | First-class — native pixel rendering        |
-| WezTerm        | iTerm2 inline image | First-class — native pixel rendering        |
-| iTerm2         | iTerm2 inline image | First-class — native pixel rendering        |
-| Apple Terminal | Unicode half-blocks | Fallback (no graphics protocol support)     |
-| Alacritty      | Unicode half-blocks | Fallback                                    |
-| Windows Term.  | Unicode half-blocks | Fallback                                    |
-| foot / mlterm  | Unicode half-blocks | Falls back; Sixel support is on the roadmap |
+### tmux
 
-Run `texttv 300 --mode auto --debug-protocol` to see which protocol your
-terminal triggered.
-
-### tmux caveat
-
-Inside tmux, Kitty's graphics protocol requires passthrough. Add to
-`~/.tmux.conf`:
+Kitty's graphics protocol needs tmux passthrough:
 
 ```
 set -g allow-passthrough on
 set -g default-terminal "tmux-256color"
 ```
 
-If `--debug-protocol` reports `halfblocks` inside tmux but your outer
-terminal is Kitty/Ghostty/WezTerm/iTerm2, this is almost always the cause.
-The default teletext mode is unaffected by tmux.
+If `--debug-protocol` says `halfblocks` inside tmux but your outer terminal
+is Kitty / Ghostty / WezTerm, this is almost certainly why. Teletext mode is
+unaffected.
 
 ## Auto-degrade
 
-`texttv` strips ANSI escapes and the right-edge frame automatically when
-stdout is piped or redirected, so `texttv 300 | grep` and
-`texttv 300 > /tmp/page.txt` produce clean text. `NO_COLOR=1` and
-`--no-color` do the same explicitly. To keep color through a pager,
-use `texttv 300 | less -R`.
-
-For image rendering, `--mode auto` piped degrades to teletext mode; the
-forced graphics modes (`--mode kitty/iterm/blocks`) still emit escape
-sequences, because that's what you asked for.
+When `stdout` is piped or redirected, ANSI escapes are stripped automatically
+— so `texttv 300 | grep` and `texttv 300 > page.txt` produce clean text.
+`NO_COLOR=1` and `--no-color` do the same explicitly. Image mode is replaced
+by teletext mode when the output isn't a TTY (you don't want raw image-
+protocol escape codes ending up in a pipe).
 
 ## Config file
 
-`texttv` reads `~/.config/texttv/config.yaml` on startup (or
-`$XDG_CONFIG_HOME/texttv/config.yaml` if you've set that). The file is
-optional — every setting can also be passed on the command line, and
-CLI flags always win over the config file.
-
-A complete example with all options at their built-in defaults:
+Optional. Read from `$XDG_CONFIG_HOME/texttv/config.yaml` (defaults to
+`~/.config/texttv/config.yaml`). CLI flags always win; missing keys fall back
+to built-in defaults; unknown keys are an error.
 
 ```yaml
-# ~/.config/texttv/config.yaml — all options shown commented at their defaults.
-# Uncomment a line to override.
+# All fields optional. Lines below show the built-in defaults.
 
-# Rendering mode.
-# Omit to auto-pick based on terminal: `auto` on Kitty/Ghostty/WezTerm,
-# `teletext` everywhere else (iTerm2, Apple Terminal, Alacritty, …).
-# Allowed: teletext | auto | kitty | iterm | blocks
-# mode: teletext
-
-# Render size for image modes. Ignored in teletext mode.
-# Allowed: tiny | small | medium | large | xl | full
-# size: medium
-
-# Data source. Omit to let the mode pick: texttv-nu for teletext mode,
-# svt for image modes.
-# Allowed: texttv-nu | svt
-# source: texttv-nu
-
-# Strip ANSI color and the right-edge frame.
-# Equivalent to passing --no-color or setting NO_COLOR=1.
-# no_color: false
-
-# Print a blank row above and below the rendered page. Set to false to
-# render flush against any surrounding output. Equivalent to --no-padding.
-# padding: true
+# mode: teletext               # teletext | auto | kitty | iterm | blocks
+                               # (terminal-dependent default, see matrix)
+# size: medium                 # tiny | small | medium | large | xl | full
+# source: texttv-nu            # texttv-nu | svt
+# no_color: false              # also honoured: NO_COLOR=1 env, piped stdout
+# padding: true                # blank row above and below the page
+# verbose: false               # per-phase timing traces on stderr
 ```
-
-Unknown keys are rejected with an error so typos don't silently get
-ignored. If parsing fails for any reason, `texttv` prints a warning on
-stderr and continues with built-in defaults.
 
 ## Exit codes
 
-| Code | Meaning                                                       |
-| ---- | ------------------------------------------------------------- |
-| `0`  | success                                                       |
-| `1`  | bad arguments / page out of range                             |
-| `2`  | network error, parse error, or "page not available"           |
+| code | meaning |
+| --- | --- |
+| `0` | success |
+| `1` | bad arguments / page out of range |
+| `2` | network error, parse error, or "page not available" |
 
 ## Data sources
 
-- **Default (text):** [`api.texttv.nu`](https://texttv.nu) — the
-  community-run JSON proxy that preserves teletext color attributes.
-  `texttv` identifies itself via the `app=texttvcliv<version>` query
-  parameter as their policy requests
-  (<https://texttv.nu/blogg/texttv-api>).
-- **Image modes:** [`svt.se/text-tv/<PAGE>`](https://www.svt.se/text-tv/) —
-  the original SVT page, used for the embedded GIF.
+- **[`api.texttv.nu`](https://texttv.nu)** — community-run JSON proxy that
+  preserves per-cell color attributes. The teletext mode depends on this;
+  the official SVT pages strip the color information. We identify
+  ourselves as `app=texttvcliv<version>` per
+  [their policy](https://texttv.nu/blogg/texttv-api).
+- **[`svt.se/text-tv/<PAGE>`](https://www.svt.se/text-tv/)** — the official
+  page, used for the embedded GIF when an image mode is active.
+
+Decoded mosaic patterns persist to `$XDG_CACHE_HOME/texttv/mosaics/` so a
+given pattern is fetched once across all runs.
 
 ## License
 
-MIT
-
+MIT or Apache-2.0, at your option.
