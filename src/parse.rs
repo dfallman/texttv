@@ -228,13 +228,28 @@ fn lines_equivalent(a: &Line, b: &Line) -> bool {
 
 fn derive_plain(lines: &[Line]) -> String {
     let mut out = String::new();
-    for line in lines {
+    let mut i = 0;
+    while i < lines.len() {
+        let line = &lines[i];
         for cell in &line.cells {
             out.push_str(&cell.text);
         }
         let trimmed_len = out.trim_end_matches(' ').len();
         out.truncate(trimmed_len);
         out.push('\n');
+        // Match the colored renderer's behaviour: swallow the always-blank row
+        // that texttv.nu emits below each DH heading.
+        if line.double_height
+            && lines.get(i + 1).is_some_and(|n| {
+                n.cells
+                    .iter()
+                    .all(|c| c.text.chars().all(char::is_whitespace))
+            })
+        {
+            i += 2;
+        } else {
+            i += 1;
+        }
     }
     out.trim_end().to_string()
 }
