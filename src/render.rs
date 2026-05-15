@@ -216,22 +216,27 @@ fn is_blank_line(line: &crate::parse::Line) -> bool {
 
 fn write_dh_underline(dh_line: &crate::parse::Line, out: &mut dyn Write) -> Result<()> {
     use owo_colors::OwoColorize;
+
+    // Use the heading's actual text color for the whole bar so leading-
+    // whitespace cells don't render in their default fg (typically white)
+    // against a coloured headline.
+    let bar_fg = dh_line
+        .cells
+        .iter()
+        .find(|c| c.text.chars().any(|ch| !ch.is_whitespace()))
+        .map(|c| c.fg)
+        .unwrap_or(crate::parse::TtColor::White);
+
     for cell in &dh_line.cells {
         let width = cell.text.chars().count();
         if width == 0 {
             continue;
         }
-        // Whitespace-only cells (leading indent, trailing padding, gaps
-        // between words split across cells) get plain background spaces.
-        // Only cells with real text get the ▀ bar, so the underline
-        // visually anchors to the actual heading.
-        let is_blank = cell.text.chars().all(char::is_whitespace);
-        let bar: String = if is_blank {
-            " ".repeat(width)
-        } else {
-            "▀".repeat(width)
-        };
-        let (fr, fg_g, fb) = cell.fg.rgb();
+        // U+1FB0B SEXTANT-34 — a thin horizontal stroke in the middle of the
+        // cell. Renders as a teletext-native horizontal rule instead of the
+        // heavier ▀ upper-half block we used to emit.
+        let bar: String = "\u{1FB0B}".repeat(width);
+        let (fr, fg_g, fb) = bar_fg.rgb();
         let (br, bg_g, bb) = cell.bg.rgb();
         write!(
             out,
@@ -239,7 +244,7 @@ fn write_dh_underline(dh_line: &crate::parse::Line, out: &mut dyn Write) -> Resu
             bar.truecolor(fr, fg_g, fb).on_truecolor(br, bg_g, bb)
         )?;
     }
-    // Same right-edge black frame as a normal line.
+    // Right-edge frame is outside the page proper, so it stays a black cell.
     out.write_all(b"\x1b[48;2;0;0;0m \x1b[0m\n")?;
     Ok(())
 }
