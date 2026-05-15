@@ -1,3 +1,5 @@
+#![allow(clippy::unwrap_used, clippy::expect_used)]
+
 use texttv::parse::extract_page;
 
 const PAGE_300: &str = include_str!("fixtures/page-300.html");
