@@ -62,6 +62,24 @@ pub fn render_images(images: &[DynamicImage], opts: RenderOptions) -> Result<Det
         }
     }
 
+    // Forced image-protocol modes inside tmux silently produce garbled escapes
+    // when passthrough is off. The user opted into the override; warn them
+    // unconditionally so they don't waste time guessing why the page is
+    // broken. (Auto mode goes through detect_protocol and already lands on
+    // halfblocks in that situation, which the debug_protocol hint above
+    // already covers.)
+    if matches!(opts.mode, Mode::Kitty | Mode::Iterm) && std::env::var_os("TMUX").is_some() {
+        let proto = if opts.mode == Mode::Kitty {
+            "kitty"
+        } else {
+            "iterm"
+        };
+        eprintln!(
+            "hint: forcing {proto} graphics inside tmux requires `set -g allow-passthrough on` \
+             in tmux.conf. If the output looks garbled, that's why."
+        );
+    }
+
     let mut stdout = std::io::stdout().lock();
     for (i, img) in images.iter().enumerate() {
         if i > 0 {

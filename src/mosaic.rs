@@ -84,8 +84,8 @@ fn cache_dir() -> Option<PathBuf> {
 }
 
 /// File name = the bare GIF hash from the URL (the digits before `.gif`).
-/// Falling back to a stable hash of the whole URL means an off-spec URL still
-/// caches, just under a less-recognisable name.
+/// Falling back to a deterministic hash of the whole URL means an off-spec
+/// URL still caches under a stable name across runs.
 fn cache_key(url: &str) -> String {
     if let Some(name) = url.rsplit('/').next()
         && let Some(stem) = name.strip_suffix(".gif")
@@ -93,9 +93,12 @@ fn cache_key(url: &str) -> String {
     {
         return stem.to_string();
     }
-    // Fallback: hash the URL deterministically.
-    use std::hash::{BuildHasher, Hasher};
-    let mut h = std::collections::hash_map::RandomState::new().build_hasher();
+    // Fallback: `DefaultHasher::new()` is seeded with fixed constants, so the
+    // same URL maps to the same filename across runs. (Earlier code used
+    // `RandomState::new()` which seeded per-process, defeating the disk cache
+    // for off-spec URLs.)
+    use std::hash::{DefaultHasher, Hasher};
+    let mut h = DefaultHasher::new();
     h.write(url.as_bytes());
     format!("u{:016x}", h.finish())
 }
@@ -322,5 +325,22 @@ mod tests {
         assert!(is_closer_to([255, 255, 255], (255, 255, 255), (0, 0, 0)));
         assert!(!is_closer_to([0, 0, 0], (255, 255, 255), (0, 0, 0)));
         assert!(is_closer_to([200, 200, 200], (255, 255, 255), (0, 0, 0)));
+    }
+
+    #[test]
+    fn cache_key_uses_bare_digits_for_well_formed_urls() {
+        let url = "https://l.texttv.nu/storage/chars/12345.gif";
+        assert_eq!(cache_key(url), "12345");
+    }
+
+    #[test]
+    fn cache_key_falls_back_to_stable_hash() {
+        // Off-spec URL exercises the hash fallback. Same URL → same key on
+        // every call (regression guard for the old RandomState-seeded path).
+        let url = "https://example.com/not-a-digits-stem.gif?query=x";
+        let a = cache_key(url);
+        let b = cache_key(url);
+        assert_eq!(a, b);
+        assert!(a.starts_with('u'));
     }
 }
