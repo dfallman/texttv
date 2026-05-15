@@ -221,7 +221,16 @@ fn write_dh_underline(dh_line: &crate::parse::Line, out: &mut dyn Write) -> Resu
         if width == 0 {
             continue;
         }
-        let bar: String = "▀".repeat(width);
+        // Whitespace-only cells (leading indent, trailing padding, gaps
+        // between words split across cells) get plain background spaces.
+        // Only cells with real text get the ▀ bar, so the underline
+        // visually anchors to the actual heading.
+        let is_blank = cell.text.chars().all(char::is_whitespace);
+        let bar: String = if is_blank {
+            " ".repeat(width)
+        } else {
+            "▀".repeat(width)
+        };
         let (fr, fg_g, fb) = cell.fg.rgb();
         let (br, bg_g, bb) = cell.bg.rgb();
         write!(
