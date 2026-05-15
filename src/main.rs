@@ -6,6 +6,7 @@ use texttv::config::Config;
 use texttv::fetch;
 use texttv::mosaic;
 use texttv::parse::{extract_page, parse_texttv_nu};
+use texttv::timing;
 use texttv::render::{
     RenderOptions, render_colored, render_images, render_text, stdout_is_tty,
 };
@@ -39,6 +40,18 @@ fn main() -> ExitCode {
 enum AppError {
     User(String),
     Runtime(anyhow::Error),
+}
+
+fn unique_mosaic_count(cp: &texttv::parse::ColoredPage) -> usize {
+    let mut seen = std::collections::HashSet::new();
+    for line in &cp.lines {
+        for cell in &line.cells {
+            if let Some(url) = cell.mosaic_url.as_deref() {
+                seen.insert(url);
+            }
+        }
+    }
+    seen.len()
 }
 
 fn run(args: Args) -> Result<(), AppError> {
@@ -92,38 +105,58 @@ fn run(args: Args) -> Result<(), AppError> {
 
     match (effective_mode, source) {
         (Mode::Teletext, Source::TexttvNu) => {
-            let json = fetch::fetch_texttv_nu(page).map_err(AppError::Runtime)?;
-            let cp = parse_texttv_nu(&json, page).map_err(AppError::Runtime)?;
+            let json = timing::time(&format!("fetch texttv.nu/{page}"), || {
+                fetch::fetch_texttv_nu(page)
+            })
+            .map_err(AppError::Runtime)?;
+            let cp = timing::time("parse colored html", || {
+                parse_texttv_nu(&json, page)
+            })
+            .map_err(AppError::Runtime)?;
             if !no_color {
-                // Warm the mosaic cache in parallel before we start writing
-                // to stdout. The render path then hits cache for every cell.
-                mosaic::prefetch_page(&cp);
+                let n = unique_mosaic_count(&cp);
+                if n > 0 {
+                    timing::time(&format!("prefetch {n} mosaic GIFs"), || {
+                        mosaic::prefetch_page(&cp)
+                    });
+                }
             }
             let mut out = std::io::stdout().lock();
-            if no_color {
-                // --no-color strips both color and double-height (DEC escapes
-                // would render visually large even without color).
-                render_text(&cp.plain, &mut out).map_err(AppError::Runtime)?;
-            } else {
-                render_colored(&cp.lines, true, &mut out).map_err(AppError::Runtime)?;
-            }
+            timing::time("render", || -> Result<(), anyhow::Error> {
+                if no_color {
+                    render_text(&cp.plain, &mut out)
+                } else {
+                    render_colored(&cp.lines, true, &mut out)
+                }
+            })
+            .map_err(AppError::Runtime)?;
         }
         (Mode::Teletext, Source::Svt) => {
-            let html = fetch::fetch_html(page).map_err(AppError::Runtime)?;
-            let page_data = extract_page(&html, page).map_err(AppError::Runtime)?;
+            let html = timing::time(&format!("fetch svt.se/{page}"), || {
+                fetch::fetch_html(page)
+            })
+            .map_err(AppError::Runtime)?;
+            let page_data = timing::time("parse svt html", || extract_page(&html, page))
+                .map_err(AppError::Runtime)?;
             let mut out = std::io::stdout().lock();
-            render_text(&page_data.text, &mut out).map_err(AppError::Runtime)?;
+            timing::time("render text", || render_text(&page_data.text, &mut out))
+                .map_err(AppError::Runtime)?;
         }
         (image_mode, _) => {
             // Image rendering requires the GIF, which only svt.se serves.
-            let html = fetch::fetch_html(page).map_err(AppError::Runtime)?;
-            let page_data = extract_page(&html, page).map_err(AppError::Runtime)?;
+            let html = timing::time(&format!("fetch svt.se/{page}"), || {
+                fetch::fetch_html(page)
+            })
+            .map_err(AppError::Runtime)?;
+            let page_data = timing::time("decode page GIF", || extract_page(&html, page))
+                .map_err(AppError::Runtime)?;
             let opts = RenderOptions {
                 mode: image_mode,
                 size: resolved_size,
                 debug_protocol: args.debug_protocol,
             };
-            render_images(&page_data.images, opts).map_err(AppError::Runtime)?;
+            timing::time("render image", || render_images(&page_data.images, opts))
+                .map_err(AppError::Runtime)?;
         }
     }
     Ok(())
