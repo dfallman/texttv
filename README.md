@@ -190,4 +190,5 @@ stderr and continues with built-in defaults.
 
 ## License
 
-MIT or Apache-2.0, at your option.
+MIT
+

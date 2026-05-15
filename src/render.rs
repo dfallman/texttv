@@ -175,20 +175,63 @@ pub fn render_text(text: &str, out: &mut dyn Write) -> Result<()> {
 
 /// Render the colored teletext line stream.
 ///
-/// `color` enables ANSI truecolor escapes. Each line is emitted exactly once;
-/// the parsed `Line.double_height` flag is currently informational. (Earlier
-/// versions emitted DEC `ESC#3`/`ESC#4` pairs for DH lines, but DECDHL
-/// support is patchy across terminals — when it's not honored, the pair
-/// shows up as visible duplicates. Better to lose the visual tall-text
-/// effect than to ship duplicates.)
+/// `color` enables ANSI truecolor escapes. Each line is emitted exactly once.
+/// DECDHL escapes turned out unreliable across terminals; instead, lines
+/// flagged `double_height` get a thick colored bar drawn on the always-blank
+/// row directly below them, in the cell's fg color. The bar is `▀` (upper
+/// half block) repeated to match each cell's width, so the colors of a
+/// multi-color heading carry through into the underline.
 pub fn render_colored(
     lines: &[crate::parse::Line],
     color: bool,
     out: &mut dyn Write,
 ) -> Result<()> {
-    for line in lines {
+    let mut i = 0;
+    while i < lines.len() {
+        let line = &lines[i];
         write_line(line, color, "", out)?;
+
+        // For a DH line, replace the following blank row with a colored bar
+        // — but only when color is on. The no-color path stays as flat text.
+        if color
+            && line.double_height
+            && lines
+                .get(i + 1)
+                .is_some_and(is_blank_line)
+        {
+            write_dh_underline(line, out)?;
+            i += 2;
+            continue;
+        }
+        i += 1;
     }
+    Ok(())
+}
+
+fn is_blank_line(line: &crate::parse::Line) -> bool {
+    line.cells.iter().all(|c| {
+        !c.mosaic && c.text.chars().all(char::is_whitespace)
+    })
+}
+
+fn write_dh_underline(dh_line: &crate::parse::Line, out: &mut dyn Write) -> Result<()> {
+    use owo_colors::OwoColorize;
+    for cell in &dh_line.cells {
+        let width = cell.text.chars().count();
+        if width == 0 {
+            continue;
+        }
+        let bar: String = "▀".repeat(width);
+        let (fr, fg_g, fb) = cell.fg.rgb();
+        let (br, bg_g, bb) = cell.bg.rgb();
+        write!(
+            out,
+            "{}",
+            bar.truecolor(fr, fg_g, fb).on_truecolor(br, bg_g, bb)
+        )?;
+    }
+    // Same right-edge black frame as a normal line.
+    out.write_all(b"\x1b[48;2;0;0;0m \x1b[0m\n")?;
     Ok(())
 }
 
