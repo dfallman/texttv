@@ -67,10 +67,8 @@ impl State {
     }
 
     /// Install a freshly-parsed page: copy in all subpages, render the
-    /// first one, rescan in-page links, append subpage selector links
-    /// (when there's more than one subpage). Selection resets to `None`
-    /// so a freshly-loaded page has no inverted link until the user
-    /// presses ↑ or ↓.
+    /// first one (with the DH-reflow applied), rescan in-page links,
+    /// append subpage selector links. Selection resets to `None`.
     pub fn install_page(&mut self, page: ColoredPage) {
         self.current_page = page.page_no;
         self.subpages = page.subpages;
@@ -80,7 +78,7 @@ impl State {
             self.subpages.push(page.lines);
         }
         self.subpage_idx = 0;
-        self.lines = self.subpages[0].clone();
+        self.lines = dh_reflow(&self.subpages[0]);
         self.rebuild_links();
         self.selected = None;
         self.fetch = FetchState::Idle;
@@ -114,7 +112,7 @@ impl State {
             return;
         }
         self.subpage_idx = new_idx;
-        self.lines = self.subpages[new_idx].clone();
+        self.lines = dh_reflow(&self.subpages[new_idx]);
         self.rebuild_links();
         self.selected = self
             .links
@@ -151,6 +149,33 @@ impl State {
         }
         self.links = links;
     }
+}
+
+/// Swap each double-height heading with its trailing blank-padding row,
+/// so the heading renders on the *bottom* half of the DH pair rather
+/// than the top. Visually pushes the heading downward by one cell so it
+/// sits adjacent to the content below it, with the empty cell sitting
+/// above as separation from the content above. Looks better in
+/// interactive mode where chrome boundaries are visible.
+fn dh_reflow(lines: &[Line]) -> Vec<Line> {
+    let mut out: Vec<Line> = Vec::with_capacity(lines.len());
+    let mut i = 0;
+    while i < lines.len() {
+        let cur = &lines[i];
+        let next_blank = lines
+            .get(i + 1)
+            .map(crate::render::is_blank_line)
+            .unwrap_or(false);
+        if cur.double_height && next_blank {
+            out.push(lines[i + 1].clone());
+            out.push(cur.clone());
+            i += 2;
+        } else {
+            out.push(cur.clone());
+            i += 1;
+        }
+    }
+    out
 }
 
 /// Build a 24-row, 40-col page containing `Sidan finns inte` centered.
