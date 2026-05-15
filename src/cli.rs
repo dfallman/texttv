@@ -1,5 +1,18 @@
+use clap::builder::styling::{AnsiColor, Effects, Styles};
 use clap::{Parser, ValueEnum};
 use serde::Deserialize;
+
+/// Help-output styling. Default clap styling uses bold+underline for headers
+/// like "Usage:" / "Options:"; we strip the underline and recolour the
+/// headers blue. Error is bold red.
+const HELP_STYLES: Styles = Styles::styled()
+    .header(AnsiColor::Blue.on_default().effects(Effects::BOLD))
+    .usage(AnsiColor::Blue.on_default().effects(Effects::BOLD))
+    .literal(AnsiColor::Cyan.on_default().effects(Effects::BOLD))
+    .placeholder(AnsiColor::Cyan.on_default())
+    .error(AnsiColor::Red.on_default().effects(Effects::BOLD))
+    .valid(AnsiColor::Green.on_default())
+    .invalid(AnsiColor::Yellow.on_default());
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum, Deserialize)]
 #[serde(rename_all = "kebab-case")]
@@ -67,7 +80,12 @@ impl Size {
 }
 
 #[derive(Debug, Parser)]
-#[command(name = "texttv", version, about = "Render SVT Text-TV pages in the terminal")]
+#[command(
+    name = "texttv",
+    version,
+    about = "Render SVT Text-TV pages in the terminal",
+    styles = HELP_STYLES,
+)]
 pub struct Args {
     /// Page number in 100..=999. Omit only with --list.
     #[arg(value_parser = parse_page, required_unless_present = "list")]
