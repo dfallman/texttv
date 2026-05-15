@@ -1,6 +1,8 @@
 use clap::{Parser, ValueEnum};
+use serde::Deserialize;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum, Deserialize)]
+#[serde(rename_all = "kebab-case")]
 pub enum Mode {
     /// Let viuer pick the best protocol available.
     Auto,
@@ -15,7 +17,8 @@ pub enum Mode {
     Teletext,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum, Deserialize)]
+#[serde(rename_all = "kebab-case")]
 pub enum Source {
     /// Default: scrape svt.se/text-tv/<PAGE>.
     Svt,
@@ -25,7 +28,8 @@ pub enum Source {
 
 /// Render size for image modes (auto/kitty/iterm/blocks). Ignored in teletext
 /// mode, where the page is always 41 cells wide.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum, Deserialize)]
+#[serde(rename_all = "kebab-case")]
 pub enum Size {
     /// 30 cells wide.
     Tiny,
@@ -76,8 +80,8 @@ pub struct Args {
     pub mode: Option<Mode>,
 
     /// Render size for image modes. Ignored in teletext mode.
-    #[arg(long, value_enum, default_value_t = Size::Medium)]
-    pub size: Size,
+    #[arg(long, value_enum)]
+    pub size: Option<Size>,
 
     /// Data source. Defaults to texttv-nu for teletext mode (rich color),
     /// svt for image modes. Override only for debugging or to fall back when
