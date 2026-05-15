@@ -237,16 +237,24 @@ pub struct Link {
     pub followable: bool,
 }
 
-/// Scan the rendered page for three-digit page references that are
-/// flanked by spaces (or line edges) on both sides. Mosaic cells count
-/// as spaces — they never participate in a link.
+/// Scan the rendered page for three-digit page references and emit them
+/// as `Link`s. The scanner is intentionally permissive — SVT's pages use
+/// several conventions for link decoration and missing real links is
+/// worse than catching a few false positives:
 ///
-/// Iterates by char (not byte) so non-ASCII text earlier on the line
-/// — Swedish å/ö/ä, copyright sigils, etc. — doesn't shift the link's
-/// `col_start` relative to the rendered grid. (A byte index over a UTF-8
-/// string overcounts the column for every multi-byte char that came
-/// before, which is what was painting the reverse-video highlight off
-/// by one or more cells.)
+/// - `" 300 "` — the bare case; surrounding spaces (or line edges) are
+///   the canonical boundary.
+/// - `" 328f "` — `f` is SVT's multi-page suffix; the link targets page
+///   328, and the `f` is included in the highlight extent.
+/// - `" 376- "` — trailing dash (often used when a page references the
+///   first of a range without an explicit upper bound).
+/// - `" 343-344 "` — range; both numbers are detected as independent
+///   links to 343 and 344.
+/// - `"100.000"` — *not* a link (digits adjacent to a `.`).
+///
+/// Mosaic cells count as space placeholders, so a mosaic adjacent to a
+/// link doesn't disqualify it. Iteration is char-based (not byte-based)
+/// so non-ASCII text earlier on the line doesn't shift link columns.
 pub fn scan_links(lines: &[Line]) -> Vec<Link> {
     let mut out = Vec::new();
     for (row, line) in lines.iter().enumerate() {
@@ -280,31 +288,48 @@ pub fn scan_links(lines: &[Line]) -> Vec<Link> {
                 i = j;
                 continue;
             }
-            let left_boundary = i == 0 || chars[i - 1] == ' ';
-            let right_boundary = i + 3 == chars.len() || chars[i + 3] == ' ';
-            if !(left_boundary && right_boundary) {
+            // Boundary characters. Left side: space, dash, or line edge.
+            // Right side: space, dash, 'f' (multi-page indicator), or
+            // line edge. Anything else (e.g. '.', ',') disqualifies the
+            // run so `100.000` doesn't become a link.
+            let left_ok = i == 0 || matches!(chars[i - 1], ' ' | '-');
+            let right_ok = i + 3 == chars.len() || matches!(chars[i + 3], ' ' | '-' | 'f');
+            if !(left_ok && right_ok) {
                 i += 1;
                 continue;
             }
-            // Compose the highlight extent: include the surrounding space
-            // cells when they exist.
-            let col_start = if i > 0 { (i as u16) - 1 } else { 0 };
-            let after_digits = i + 3;
-            let col_end = if after_digits < chars.len() {
-                (after_digits as u16) + 1
-            } else {
-                after_digits as u16
-            };
+            // The target is the 3-digit number; 'f' is decoration.
             let target_str: String = chars[i..i + 3].iter().collect();
             let target: u16 = target_str.parse().unwrap_or(0);
+
+            // Visual extent: the 3 digits, plus an optional 'f' suffix,
+            // plus up to one cell of flanking space/dash on each side.
+            // Keeps highlight extents consistent (typically 4–6 cells).
+            let mut core_end = i + 3;
+            if core_end < chars.len() && chars[core_end] == 'f' {
+                core_end += 1;
+            }
+            let left_pad = if i > 0 && matches!(chars[i - 1], ' ' | '-') {
+                1
+            } else {
+                0
+            };
+            let right_pad = if core_end < chars.len() && matches!(chars[core_end], ' ' | '-') {
+                1
+            } else {
+                0
+            };
+            let col_start = (i - left_pad) as u16;
+            let col_len = (core_end + right_pad - i + left_pad) as u16;
+
             out.push(Link {
                 row: row as u16,
                 col_start,
-                col_len: col_end - col_start,
+                col_len,
                 target,
                 followable: target >= 100,
             });
-            i = after_digits;
+            i = core_end;
         }
     }
     out
@@ -706,6 +731,74 @@ mod tests {
         assert_eq!(links.len(), 1);
         assert_eq!(links[0].col_start, 3);
         assert_eq!(links[0].col_len, 4);
+    }
+
+    #[test]
+    fn scan_finds_link_with_f_suffix() {
+        let lines = vec![line(" 328f ")];
+        let links = scan_links(&lines);
+        assert_eq!(links.len(), 1);
+        assert_eq!(links[0].target, 328);
+        // ' 328f ' → 6 cells; col_start=0; extent covers ' ', '328', 'f', ' '
+        assert_eq!(links[0].col_start, 0);
+        assert_eq!(links[0].col_len, 6);
+        assert!(links[0].followable);
+    }
+
+    #[test]
+    fn scan_finds_link_with_f_at_line_end() {
+        let lines = vec![line(" 328f")];
+        let links = scan_links(&lines);
+        assert_eq!(links.len(), 1);
+        assert_eq!(links[0].target, 328);
+        // No trailing space pad → col_len = 5 (' 328f')
+        assert_eq!(links[0].col_len, 5);
+    }
+
+    #[test]
+    fn scan_finds_link_with_trailing_dash() {
+        let lines = vec![line(" 376- ")];
+        let links = scan_links(&lines);
+        assert_eq!(links.len(), 1);
+        assert_eq!(links[0].target, 376);
+        assert_eq!(links[0].col_start, 0);
+        assert_eq!(links[0].col_len, 5);
+    }
+
+    #[test]
+    fn scan_finds_both_pages_in_range_link() {
+        let lines = vec![line(" 343-344 ")];
+        let links = scan_links(&lines);
+        assert_eq!(links.len(), 2);
+        assert_eq!(links[0].target, 343);
+        assert_eq!(links[1].target, 344);
+    }
+
+    #[test]
+    fn scan_finds_range_link_after_label() {
+        // Real-world example: "Herrallsv 343-344"
+        let lines = vec![line("Herrallsv 343-344")];
+        let links = scan_links(&lines);
+        assert_eq!(links.len(), 2);
+        assert_eq!(links[0].target, 343);
+        assert_eq!(links[1].target, 344);
+    }
+
+    #[test]
+    fn scan_finds_dash_link_after_label() {
+        // Real-world example: "Målservice 376-"
+        let lines = vec![line("Målservice 376-")];
+        let links = scan_links(&lines);
+        assert_eq!(links.len(), 1);
+        assert_eq!(links[0].target, 376);
+    }
+
+    #[test]
+    fn scan_still_rejects_decimal_numbers() {
+        // Regression: `.` is not a valid right boundary.
+        let lines = vec![line(" 100.000 ")];
+        let links = scan_links(&lines);
+        assert!(links.is_empty());
     }
 
     #[test]
