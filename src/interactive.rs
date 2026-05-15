@@ -20,7 +20,7 @@ use crossterm::{
 };
 use owo_colors::OwoColorize;
 
-use crate::parse::{ColoredPage, Line};
+use crate::parse::{Cell, ColoredPage, Line, TtColor};
 
 pub(crate) const SPINNER: &[char] = &['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
 /// Event-loop poll timeout (also the spinner cadence).
@@ -76,6 +76,57 @@ impl State {
         self.input_buf.clear();
         self.status = None;
     }
+
+    /// Install a "page doesn't exist" placeholder. Used when the worker
+    /// thread reports a failed load — we still commit `current_page` to
+    /// the target so neighbouring-page navigation works.
+    pub fn install_placeholder(&mut self, page: u16) {
+        self.current_page = page;
+        self.lines = placeholder_lines();
+        self.links = Vec::new();
+        self.selected = None;
+        self.fetch = FetchState::Idle;
+        self.pending_rx = None;
+        self.input_buf.clear();
+        self.status = None;
+    }
+}
+
+/// Build a 24-row, 40-col page containing `Sidan finns inte` centered.
+/// All cells are white-on-black so the render path shows a uniform dark
+/// page (matching the chrome rows).
+fn placeholder_lines() -> Vec<Line> {
+    const PAGE_WIDTH: usize = 40;
+    const PAGE_HEIGHT: usize = 24;
+    const MSG: &str = "Sidan finns inte";
+    let msg_row = (PAGE_HEIGHT - 1) / 2;
+    let msg_len = MSG.chars().count();
+    let pad_left = (PAGE_WIDTH - msg_len) / 2;
+    let pad_right = PAGE_WIDTH - pad_left - msg_len;
+
+    let blank_cell = || Cell {
+        text: " ".repeat(PAGE_WIDTH),
+        fg: TtColor::White,
+        bg: TtColor::Black,
+        mosaic_url: None,
+    };
+    let msg_cell = || Cell {
+        text: format!("{:pad_left$}{MSG}{:pad_right$}", "", "",),
+        fg: TtColor::White,
+        bg: TtColor::Black,
+        mosaic_url: None,
+    };
+
+    (0..PAGE_HEIGHT)
+        .map(|i| Line {
+            cells: vec![if i == msg_row {
+                msg_cell()
+            } else {
+                blank_cell()
+            }],
+            double_height: false,
+        })
+        .collect()
 }
 
 /// What `handle_key` tells the outer loop to do. Keeps `handle_key` pure:
@@ -136,11 +187,30 @@ pub fn handle_key(state: &mut State, ev: KeyEvent) -> Action {
             }
             Action::None
         }
+        KeyCode::Left => {
+            if state.current_page > 100 {
+                state.input_buf.clear();
+                Action::StartFetch(state.current_page - 1)
+            } else {
+                state.status = Some("Already at first page (100)".into());
+                Action::None
+            }
+        }
+        KeyCode::Right => {
+            if state.current_page < 999 {
+                state.input_buf.clear();
+                Action::StartFetch(state.current_page + 1)
+            } else {
+                state.status = Some("Already at last page (999)".into());
+                Action::None
+            }
+        }
         KeyCode::Enter => {
             if let Some(sel) = state.selected
                 && let Some(link) = state.links.get(sel)
             {
                 if link.followable {
+                    state.input_buf.clear();
                     Action::StartFetch(link.target)
                 } else {
                     state.status = Some(format!("Error: page {} not in 100..=999", link.target));
@@ -489,17 +559,24 @@ fn drain_fetch(state: &mut State) {
         Ok(Ok(cp)) => {
             state.install_page(cp);
         }
-        Ok(Err(e)) => {
-            state.status = Some(format!("Error: {e:#}"));
-            state.input_buf.clear();
-            state.fetch = FetchState::Idle;
-            state.pending_rx = None;
+        Ok(Err(_)) => {
+            // The worker reported a load failure. Commit the target page
+            // as the new current and render the "Sidan finns inte"
+            // placeholder so neighbouring-page navigation continues to
+            // work even past holes in SVT's numbering.
+            let target = match state.fetch {
+                FetchState::Fetching { target_page, .. } => target_page,
+                FetchState::Idle => state.current_page,
+            };
+            state.install_placeholder(target);
         }
         Err(TryRecvError::Empty) => {}
         Err(TryRecvError::Disconnected) => {
-            state.status = Some("Error: load failed".into());
-            state.fetch = FetchState::Idle;
-            state.pending_rx = None;
+            let target = match state.fetch {
+                FetchState::Fetching { target_page, .. } => target_page,
+                FetchState::Idle => state.current_page,
+            };
+            state.install_placeholder(target);
         }
     }
 }
@@ -768,6 +845,67 @@ mod tests {
         };
         let action = handle_key(&mut s, key(KeyCode::Enter));
         assert_eq!(action, Action::None);
+    }
+
+    #[test]
+    fn left_arrow_starts_fetch_for_previous_page() {
+        let mut s = State::initial(305);
+        let action = handle_key(&mut s, key(KeyCode::Left));
+        assert_eq!(action, Action::StartFetch(304));
+    }
+
+    #[test]
+    fn left_arrow_at_first_page_is_noop_with_status() {
+        let mut s = State::initial(100);
+        let action = handle_key(&mut s, key(KeyCode::Left));
+        assert_eq!(action, Action::None);
+        assert!(s.status.is_some());
+    }
+
+    #[test]
+    fn right_arrow_starts_fetch_for_next_page() {
+        let mut s = State::initial(305);
+        let action = handle_key(&mut s, key(KeyCode::Right));
+        assert_eq!(action, Action::StartFetch(306));
+    }
+
+    #[test]
+    fn right_arrow_at_last_page_is_noop_with_status() {
+        let mut s = State::initial(999);
+        let action = handle_key(&mut s, key(KeyCode::Right));
+        assert_eq!(action, Action::None);
+        assert!(s.status.is_some());
+    }
+
+    #[test]
+    fn install_placeholder_sets_current_page_and_renders_message() {
+        let mut s = State::initial(100);
+        s.install_placeholder(420);
+        assert_eq!(s.current_page, 420);
+        assert!(s.links.is_empty());
+        assert_eq!(s.selected, None);
+        let combined: String = s
+            .lines
+            .iter()
+            .flat_map(|l| l.cells.iter().map(|c| c.text.clone()))
+            .collect();
+        assert!(
+            combined.contains("Sidan finns inte"),
+            "placeholder text missing: {combined}"
+        );
+    }
+
+    #[test]
+    fn install_placeholder_clears_input_and_fetch_state() {
+        let mut s = State::initial(100);
+        s.input_buf = "1".to_string();
+        s.fetch = FetchState::Fetching {
+            target_page: 420,
+            frame: 5,
+        };
+        s.install_placeholder(420);
+        assert_eq!(s.input_buf, "");
+        assert!(matches!(s.fetch, FetchState::Idle));
     }
 
     #[test]
