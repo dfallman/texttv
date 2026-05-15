@@ -1,9 +1,151 @@
 //! In-terminal interactive page browser. See
 //! `docs/superpowers/specs/2026-05-15-interactive-mode-design.md`.
 
-use anyhow::Result;
+use std::sync::mpsc::Receiver;
+use std::time::Duration;
 
-use crate::parse::Line;
+use anyhow::Result;
+use crossterm::event::{KeyCode, KeyEvent};
+
+use crate::parse::{ColoredPage, Line};
+
+// Used by `tick` (next task) and the event loop. `#[allow(dead_code)]` is
+// removed once those land.
+#[allow(dead_code)]
+pub(crate) const SPINNER: &[char] = &[
+    '⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏',
+];
+#[allow(dead_code)]
+pub(crate) const SPINNER_INTERVAL: Duration = Duration::from_millis(80);
+
+/// Background-fetch state. `Idle` between loads, `Fetching` while a worker
+/// thread is running.
+#[derive(Debug)]
+pub enum FetchState {
+    Idle,
+    Fetching { target_page: u16, frame: usize },
+}
+
+#[derive(Debug)]
+pub struct State {
+    pub current_page: u16,
+    pub input_buf: String,
+    pub lines: Vec<Line>,
+    pub links: Vec<Link>,
+    pub selected: Option<usize>,
+    pub fetch: FetchState,
+    /// Channel where the worker thread sends its `Result<ColoredPage>`.
+    pub pending_rx: Option<Receiver<anyhow::Result<ColoredPage>>>,
+    /// One-shot bottom-bar message. Cleared by the next keystroke or load.
+    pub status: Option<String>,
+}
+
+impl State {
+    /// Build an initial state pointed at `page` with no rendered content
+    /// yet. Caller is expected to immediately start a fetch for `page`.
+    pub fn initial(page: u16) -> Self {
+        Self {
+            current_page: page,
+            input_buf: String::new(),
+            lines: Vec::new(),
+            links: Vec::new(),
+            selected: None,
+            fetch: FetchState::Idle,
+            pending_rx: None,
+            status: None,
+        }
+    }
+
+    /// Install a freshly-parsed page: replace `lines`, rescan links, reset
+    /// selection to the first link (if any), clear fetch state + buffer.
+    pub fn install_page(&mut self, page: ColoredPage) {
+        self.current_page = page.page_no;
+        self.lines = page.lines;
+        self.links = scan_links(&self.lines);
+        self.selected = if self.links.is_empty() { None } else { Some(0) };
+        self.fetch = FetchState::Idle;
+        self.pending_rx = None;
+        self.input_buf.clear();
+        self.status = None;
+    }
+}
+
+/// What `handle_key` tells the outer loop to do. Keeps `handle_key` pure:
+/// no threads, no I/O, no global state.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Action {
+    None,
+    /// Caller should kick off a fetch for the given page (already in 100..=999).
+    StartFetch(u16),
+    /// Caller should exit the event loop.
+    Quit,
+}
+
+/// Apply a key event to the state and return an action for the caller.
+/// Pure: never touches I/O, never spawns threads.
+pub fn handle_key(state: &mut State, ev: KeyEvent) -> Action {
+    let was_fetching = matches!(state.fetch, FetchState::Fetching { .. });
+
+    match ev.code {
+        KeyCode::Esc => Action::Quit,
+        _ if was_fetching => {
+            // While a fetch is in flight, ignore everything except Esc.
+            Action::None
+        }
+        KeyCode::Char(c) if c.is_ascii_digit() => {
+            state.status = None;
+            state.input_buf.push(c);
+            if state.input_buf.len() == 3 {
+                let parsed: u16 = state.input_buf.parse().unwrap_or(0);
+                state.input_buf.clear();
+                if (100..=999).contains(&parsed) {
+                    Action::StartFetch(parsed)
+                } else {
+                    state.status = Some(format!(
+                        "Error: page must be in 100..=999 (got {parsed:03})"
+                    ));
+                    Action::None
+                }
+            } else {
+                Action::None
+            }
+        }
+        KeyCode::Backspace => {
+            state.input_buf.pop();
+            Action::None
+        }
+        KeyCode::Up => {
+            if let Some(sel) = state.selected {
+                state.selected = Some(sel.saturating_sub(1));
+            }
+            Action::None
+        }
+        KeyCode::Down => {
+            if let Some(sel) = state.selected
+                && sel + 1 < state.links.len()
+            {
+                state.selected = Some(sel + 1);
+            }
+            Action::None
+        }
+        KeyCode::Enter => {
+            if let Some(sel) = state.selected
+                && let Some(link) = state.links.get(sel)
+            {
+                if link.followable {
+                    Action::StartFetch(link.target)
+                } else {
+                    state.status =
+                        Some(format!("Error: page {} not in 100..=999", link.target));
+                    Action::None
+                }
+            } else {
+                Action::None
+            }
+        }
+        _ => Action::None,
+    }
+}
 
 /// A three-digit page reference scanned out of a rendered teletext page.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -101,7 +243,8 @@ pub fn run(_initial_page: u16) -> Result<()> {
 #[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests {
     use super::*;
-    use crate::parse::{Cell, Line, TtColor};
+    use crate::parse::{Cell, ColoredPage, Line, TtColor};
+    use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
     /// Build a one-cell line containing the given text. Tests don't need
     /// per-cell color attributes — the scanner ignores them.
@@ -114,6 +257,18 @@ mod tests {
                 mosaic_url: None,
             }],
             double_height: false,
+        }
+    }
+
+    fn key(code: KeyCode) -> KeyEvent {
+        KeyEvent::new(code, KeyModifiers::empty())
+    }
+
+    fn page_with_links() -> ColoredPage {
+        ColoredPage {
+            page_no: 100,
+            lines: vec![line(" 300  400 ")],
+            plain: String::new(),
         }
     }
 
@@ -210,5 +365,128 @@ mod tests {
         assert_eq!(links.len(), 2);
         assert_eq!(links[0].target, 300);
         assert_eq!(links[1].target, 400);
+    }
+
+    #[test]
+    fn typing_three_digits_emits_start_fetch() {
+        let mut s = State::initial(100);
+        s.install_page(page_with_links());
+
+        assert_eq!(handle_key(&mut s, key(KeyCode::Char('3'))), Action::None);
+        assert_eq!(s.input_buf, "3");
+
+        assert_eq!(handle_key(&mut s, key(KeyCode::Char('0'))), Action::None);
+        assert_eq!(s.input_buf, "30");
+
+        assert_eq!(
+            handle_key(&mut s, key(KeyCode::Char('5'))),
+            Action::StartFetch(305)
+        );
+        assert_eq!(s.input_buf, ""); // cleared so the user can type again
+    }
+
+    #[test]
+    fn typing_out_of_range_page_sets_status_no_fetch() {
+        let mut s = State::initial(100);
+        s.install_page(page_with_links());
+        handle_key(&mut s, key(KeyCode::Char('0')));
+        handle_key(&mut s, key(KeyCode::Char('9')));
+        let action = handle_key(&mut s, key(KeyCode::Char('9')));
+        assert_eq!(action, Action::None);
+        assert!(s.status.as_deref().unwrap_or("").contains("100..=999"));
+        assert_eq!(s.input_buf, "");
+    }
+
+    #[test]
+    fn backspace_pops_input_buf() {
+        let mut s = State::initial(100);
+        s.install_page(page_with_links());
+        handle_key(&mut s, key(KeyCode::Char('3')));
+        handle_key(&mut s, key(KeyCode::Char('0')));
+        assert_eq!(s.input_buf, "30");
+        handle_key(&mut s, key(KeyCode::Backspace));
+        assert_eq!(s.input_buf, "3");
+        handle_key(&mut s, key(KeyCode::Backspace));
+        assert_eq!(s.input_buf, "");
+        // Backspace on empty is a no-op.
+        let action = handle_key(&mut s, key(KeyCode::Backspace));
+        assert_eq!(action, Action::None);
+        assert_eq!(s.input_buf, "");
+    }
+
+    #[test]
+    fn down_arrow_moves_selection_within_bounds() {
+        let mut s = State::initial(100);
+        s.install_page(page_with_links());
+        assert_eq!(s.selected, Some(0));
+        handle_key(&mut s, key(KeyCode::Down));
+        assert_eq!(s.selected, Some(1));
+        // Saturating at last.
+        handle_key(&mut s, key(KeyCode::Down));
+        assert_eq!(s.selected, Some(1));
+    }
+
+    #[test]
+    fn up_arrow_moves_selection_within_bounds() {
+        let mut s = State::initial(100);
+        s.install_page(page_with_links());
+        handle_key(&mut s, key(KeyCode::Down));
+        assert_eq!(s.selected, Some(1));
+        handle_key(&mut s, key(KeyCode::Up));
+        assert_eq!(s.selected, Some(0));
+        // Saturating at first.
+        handle_key(&mut s, key(KeyCode::Up));
+        assert_eq!(s.selected, Some(0));
+    }
+
+    #[test]
+    fn enter_on_followable_link_emits_start_fetch() {
+        let mut s = State::initial(100);
+        s.install_page(page_with_links());
+        let action = handle_key(&mut s, key(KeyCode::Enter));
+        assert_eq!(action, Action::StartFetch(300));
+    }
+
+    #[test]
+    fn enter_on_unfollowable_link_is_noop_with_status() {
+        let mut s = State::initial(100);
+        s.install_page(ColoredPage {
+            page_no: 100,
+            lines: vec![line(" 099 ")],
+            plain: String::new(),
+        });
+        let action = handle_key(&mut s, key(KeyCode::Enter));
+        assert_eq!(action, Action::None);
+        assert!(s.status.is_some());
+    }
+
+    #[test]
+    fn esc_emits_quit() {
+        let mut s = State::initial(100);
+        assert_eq!(handle_key(&mut s, key(KeyCode::Esc)), Action::Quit);
+    }
+
+    #[test]
+    fn digit_during_fetch_is_ignored() {
+        let mut s = State::initial(100);
+        s.fetch = FetchState::Fetching {
+            target_page: 200,
+            frame: 0,
+        };
+        let action = handle_key(&mut s, key(KeyCode::Char('3')));
+        assert_eq!(action, Action::None);
+        assert_eq!(s.input_buf, "");
+    }
+
+    #[test]
+    fn enter_during_fetch_is_ignored() {
+        let mut s = State::initial(100);
+        s.install_page(page_with_links());
+        s.fetch = FetchState::Fetching {
+            target_page: 200,
+            frame: 0,
+        };
+        let action = handle_key(&mut s, key(KeyCode::Enter));
+        assert_eq!(action, Action::None);
     }
 }
