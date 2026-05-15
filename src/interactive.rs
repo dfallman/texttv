@@ -283,6 +283,22 @@ pub fn draw<W: Write>(state: &State, out: &mut W) -> anyhow::Result<()> {
         crate::render::render_colored(slice, true, out)?;
     }
 
+    // Selected-link highlight: overlay reverse video on the link's run
+    // of cells. Run after the body render so we paint over the original
+    // colors with `\x1b[7m … \x1b[27m` around the visible characters.
+    if let Some(sel) = state.selected
+        && let Some(link) = state.links.get(sel)
+    {
+        let row_idx = link.row as usize;
+        if let Some(line) = state.lines.get(row_idx) {
+            out.queue(MoveTo(link.col_start, link.row + 1))?;
+            let visible = visible_chars_at(line, link.col_start, link.col_len);
+            out.queue(Print("\x1b[7m"))?;
+            out.queue(Print(visible))?;
+            out.queue(Print("\x1b[27m"))?;
+        }
+    }
+
     // Hint bar on row 26.
     out.queue(MoveTo(0, 26))?;
     out.queue(Clear(ClearType::CurrentLine))?;
@@ -298,6 +314,36 @@ pub fn draw<W: Write>(state: &State, out: &mut W) -> anyhow::Result<()> {
     out.queue(Show)?;
     out.flush()?;
     Ok(())
+}
+
+/// Walk `line`'s cells character by character and return the substring
+/// covering columns `[col_start, col_start + col_len)`. Mosaic cells
+/// contribute a single space (matching `scan_links`).
+fn visible_chars_at(line: &Line, col_start: u16, col_len: u16) -> String {
+    let start = col_start as usize;
+    let end = start + col_len as usize;
+    let mut out = String::new();
+    let mut col = 0usize;
+    for cell in &line.cells {
+        if col >= end {
+            break;
+        }
+        let text = if cell.is_mosaic() {
+            " ".to_string()
+        } else {
+            cell.text.clone()
+        };
+        for ch in text.chars() {
+            if col >= start && col < end {
+                out.push(ch);
+            }
+            col += 1;
+            if col >= end {
+                break;
+            }
+        }
+    }
+    out
 }
 
 /// Entry point for interactive mode. Renders the initial page and runs the
@@ -628,5 +674,32 @@ mod tests {
         draw(&s, &mut buf).expect("draw");
         let out = String::from_utf8_lossy(&buf);
         assert!(out.contains("3__"), "padded input missing: {out:?}");
+    }
+
+    #[test]
+    fn draw_emits_reverse_video_escape_for_selected_link() {
+        let mut s = State::initial(100);
+        s.install_page(page_with_links());
+        assert_eq!(s.selected, Some(0));
+        let mut buf: Vec<u8> = Vec::new();
+        draw(&s, &mut buf).expect("draw");
+        let out = String::from_utf8_lossy(&buf);
+        assert!(out.contains("\x1b[7m"), "no reverse-on escape: {out:?}");
+        assert!(out.contains("\x1b[27m"), "no reverse-off escape: {out:?}");
+    }
+
+    #[test]
+    fn draw_skips_link_highlight_when_no_selection() {
+        let mut s = State::initial(100);
+        s.install_page(ColoredPage {
+            page_no: 100,
+            lines: vec![line("hello world")],
+            plain: String::new(),
+        });
+        assert_eq!(s.selected, None);
+        let mut buf: Vec<u8> = Vec::new();
+        draw(&s, &mut buf).expect("draw");
+        let out = String::from_utf8_lossy(&buf);
+        assert!(!out.contains("\x1b[7m"), "spurious reverse-on: {out:?}");
     }
 }
