@@ -1,30 +1,28 @@
 # texttv
 
-Render SVT Text-TV pages in your terminal.
+Render [SVT Text-TV](https://www.svt.se/text-tv/) pages in your terminal,
+with full fidelity to the original 40-column teletext layout — real text,
+real colors, and double-height headers.
 
 ```bash
-texttv 300              # Sport — prints the page text (default)
-texttv 300 --mode auto  # Render the GIF page using the best graphics protocol
+texttv 300              # Sport
+texttv 100              # News index
+texttv 400              # Weather
+texttv 300 --no-color   # Plain mono, grep-friendly
+texttv 300 --mode auto  # Render the page bitmap via your terminal's graphics protocol
 texttv --list           # Index of well-known section pages
 ```
 
-By default `texttv` reconstructs the original 40-column teletext layout:
-real text, real colors, and double-height headers. Data comes from the
-`api.texttv.nu` JSON feed, which exposes per-cell color attributes that
-SVT's official site doesn't publish. The page GIF render is still
-available behind `--mode auto/kitty/iterm/blocks`.
+`PAGE` is any integer in `100..=999`.
 
-## Fidelity
+## How it works
 
-- **Colors** — the 8 teletext primaries (black/red/green/yellow/blue/
-  magenta/cyan/white) emitted as ANSI truecolor escapes.
-- **Double-height** — lines tagged DH are rendered using the DEC private
-  escapes `ESC # 3` / `ESC # 4`, supported by Kitty, Ghostty, WezTerm,
-  iTerm2, xterm, and most VT-compatible terminals.
-- **Mosaic graphics** — teletext mosaic block characters (used for small
-  icons and borders) are rendered as colored spaces in v1. Layout is
-  preserved; the block pattern is lost. Mapping mosaic GIFs to Unicode
-  block characters is on the roadmap.
+`texttv` is text-first. By default it pulls the page from the
+[`api.texttv.nu`](https://texttv.nu) JSON feed, which exposes per-cell
+color attributes — the only public source faithful enough to reconstruct
+teletext color and double-height. SVT's own HTML strips those attributes,
+so it's used only for the bitmap render path (`--mode auto/kitty/iterm/blocks`),
+which displays the original GIF SVT embeds.
 
 ## Install
 
@@ -34,33 +32,51 @@ cargo install --path .
 
 Requires Rust 1.85+ (edition 2024).
 
-## Terminal compatibility
-
-| Terminal       | Protocol used       | Status                                       |
-| -------------- | ------------------- | -------------------------------------------- |
-| Kitty          | Kitty graphics      | First-class — native pixel rendering         |
-| Ghostty        | Kitty graphics      | First-class — native pixel rendering         |
-| WezTerm        | iTerm2 inline image | First-class — native pixel rendering         |
-| iTerm2         | iTerm2 inline image | First-class — native pixel rendering         |
-| Apple Terminal | Unicode half-blocks | Fallback (no graphics protocol support)      |
-| Alacritty      | Unicode half-blocks | Fallback                                     |
-| Windows Term.  | Unicode half-blocks | Fallback                                     |
-| foot / mlterm  | Unicode half-blocks | Falls back; Sixel support is on the roadmap  |
-
-Run `texttv 300 --debug-protocol` to print the detected protocol (`kitty`,
-`iterm`, or `halfblocks`) on stderr before drawing.
-
 ## Flags
 
-| Flag                              | Meaning                                                |
-| --------------------------------- | ------------------------------------------------------ |
-| `--mode {auto,kitty,iterm,blocks,text}` | Pick the rendering path. Defaults to `text`. |
-| `--no-color`                      | Strip ANSI color and double-height escapes; plain mono. |
-| `--list`                          | Print the section index and exit.                      |
-| `--debug-protocol`                | Print the detected protocol on stderr before drawing.  |
-| `--source {svt,texttv-nu}`        | Override the data source. Default: `texttv-nu` for text, `svt` for image modes. |
+| Flag                                    | Meaning                                                                         |
+| --------------------------------------- | ------------------------------------------------------------------------------- |
+| `--mode {text,auto,kitty,iterm,blocks}` | Pick the rendering path. Defaults to `text`.                                    |
+| `--no-color`                            | Strip ANSI color and double-height escapes; plain mono.                         |
+| `--list`                                | Print the section index and exit.                                               |
+| `--source {svt,texttv-nu}`              | Override the data source. Default: `texttv-nu` for text, `svt` for image modes. |
+| `--debug-protocol`                      | Print the detected graphics protocol on stderr before drawing.                  |
+| `--help`, `--version`                   | Standard.                                                                       |
 
-## tmux caveat
+## Fidelity
+
+- **Colors** — the 8 teletext primaries (black, red, green, yellow, blue,
+  magenta, cyan, white) emitted as ANSI truecolor escapes via
+  [`owo-colors`](https://crates.io/crates/owo-colors).
+- **Double-height** — lines tagged `DH` render via the DEC private escapes
+  `ESC # 3` (top half) / `ESC # 4` (bottom half). Supported by Kitty,
+  Ghostty, WezTerm, iTerm2, xterm, and most VT-compatible terminals.
+- **Mosaic graphics** — teletext mosaic block characters (small icons and
+  borders) currently render as colored spaces. Layout is preserved; the
+  block pattern is dropped. Mapping the mosaic GIFs to Unicode block
+  characters is on the roadmap.
+
+## Image mode
+
+`--mode auto` (or `kitty` / `iterm` / `blocks`) renders the page GIF that
+SVT embeds, capped at 60 terminal cells wide. The graphics protocol is
+auto-detected via [`viuer`](https://crates.io/crates/viuer):
+
+| Terminal       | Protocol used       | Status                                      |
+| -------------- | ------------------- | ------------------------------------------- |
+| Kitty          | Kitty graphics      | First-class — native pixel rendering        |
+| Ghostty        | Kitty graphics      | First-class — native pixel rendering        |
+| WezTerm        | iTerm2 inline image | First-class — native pixel rendering        |
+| iTerm2         | iTerm2 inline image | First-class — native pixel rendering        |
+| Apple Terminal | Unicode half-blocks | Fallback (no graphics protocol support)     |
+| Alacritty      | Unicode half-blocks | Fallback                                    |
+| Windows Term.  | Unicode half-blocks | Fallback                                    |
+| foot / mlterm  | Unicode half-blocks | Falls back; Sixel support is on the roadmap |
+
+Run `texttv 300 --mode auto --debug-protocol` to see which protocol your
+terminal triggered.
+
+### tmux caveat
 
 Inside tmux, Kitty's graphics protocol requires passthrough. Add to
 `~/.tmux.conf`:
@@ -70,28 +86,38 @@ set -g allow-passthrough on
 set -g default-terminal "tmux-256color"
 ```
 
-If `texttv 300 --debug-protocol` reports `halfblocks` inside tmux but your
-outer terminal is Kitty/Ghostty/WezTerm/iTerm2, this is almost always the
-cause. With `--debug-protocol` set, `texttv` prints a hint on stderr when
-it detects this situation.
+If `--debug-protocol` reports `halfblocks` inside tmux but your outer
+terminal is Kitty/Ghostty/WezTerm/iTerm2, this is almost always the cause.
+The default text mode is unaffected — DEC double-height escapes pass
+through tmux without extra configuration.
 
 ## Auto-degrade
 
-`texttv` is text-first. When stdout is piped or redirected, ANSI escapes
-and double-height codes are stripped automatically so `texttv 300 | grep`
-and `texttv 300 > /tmp/page.txt` produce clean text. `NO_COLOR=1` and
-`--no-color` do the same explicitly. If you want color through a pager,
+`texttv` strips ANSI escapes and double-height codes automatically when
+stdout is piped or redirected, so `texttv 300 | grep` and
+`texttv 300 > /tmp/page.txt` produce clean text. `NO_COLOR=1` and
+`--no-color` do the same explicitly. To keep color through a pager,
 use `texttv 300 | less -R`.
 
-If you explicitly ask for image rendering (`--mode auto/kitty/iterm/blocks`)
-and stdout is piped, `--mode auto` still degrades to text; the forced
-graphics modes write their escape sequences regardless.
+For image rendering, `--mode auto` piped degrades to text; the forced
+graphics modes (`--mode kitty/iterm/blocks`) still emit escape sequences,
+because that's what you asked for.
 
 ## Exit codes
 
-- `0` — success
-- `1` — bad arguments / page out of range
-- `2` — network or parse error, or "page not available"
+| Code | Meaning                                                       |
+| ---- | ------------------------------------------------------------- |
+| `0`  | success                                                       |
+| `1`  | bad arguments / page out of range                             |
+| `2`  | network error, parse error, or "page not available"           |
+
+## Data sources
+
+- **Default (text):** [`api.texttv.nu`](https://texttv.nu) — the
+  community-run JSON proxy that preserves teletext color attributes.
+  `texttv` identifies itself with `app=texttv-rs` per their policy.
+- **Image modes:** [`svt.se/text-tv/<PAGE>`](https://www.svt.se/text-tv/) —
+  the original SVT page, used for the embedded GIF.
 
 ## License
 
