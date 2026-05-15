@@ -235,7 +235,9 @@ fn write_line(
         }
     }
     if color {
-        out.write_all(b"\x1b[0m")?;
+        // Right-edge frame: one cell of solid black, mirroring the bitmap
+        // render's right-side padding. Inherits DEC double-height on DH lines.
+        out.write_all(b"\x1b[48;2;0;0;0m \x1b[0m")?;
     }
     out.write_all(b"\n")?;
     Ok(())
