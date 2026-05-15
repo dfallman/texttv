@@ -447,11 +447,20 @@ pub fn scan_links(lines: &[Line]) -> Vec<Link> {
                 i = j;
                 continue;
             }
-            // Boundary characters. Left side: space, dash, or line edge.
-            // Right side: space, dash, 'f' (multi-page indicator), or
-            // line edge. Anything else (e.g. '.', ',') disqualifies the
-            // run so `100.000` doesn't become a link.
-            let left_ok = i == 0 || matches!(chars[i - 1], ' ' | '-');
+            // Boundary characters. Right side: space, dash, 'f' (multi-page
+            // indicator), or line edge. Left side: same, plus '.'
+            // *as part of a multi-dot leader* (e.g. `Inrikes.......101`)
+            // — a single '.' on the left isn't enough, because that's
+            // what `100.000` looks like to the third digit.
+            let left_ok = if i == 0 {
+                true
+            } else {
+                match chars[i - 1] {
+                    ' ' | '-' => true,
+                    '.' => i < 2 || chars[i - 2] == '.',
+                    _ => false,
+                }
+            };
             let right_ok = i + 3 == chars.len() || matches!(chars[i + 3], ' ' | '-' | 'f');
             if !(left_ok && right_ok) {
                 i += 1;
@@ -1096,8 +1105,37 @@ mod tests {
 
     #[test]
     fn scan_still_rejects_decimal_numbers() {
-        // Regression: `.` is not a valid right boundary.
+        // Regression: `.` is not a valid right boundary, and the single
+        // '.' between '100' and '000' isn't a multi-dot leader so the
+        // second three-digit run is also rejected.
         let lines = vec![line(" 100.000 ")];
+        let links = scan_links(&lines);
+        assert!(links.is_empty());
+    }
+
+    #[test]
+    fn scan_finds_link_after_dot_leader() {
+        // SVT's index pages use dot leaders between labels and targets.
+        let lines = vec![line("NYHETER.......100")];
+        let links = scan_links(&lines);
+        assert_eq!(links.len(), 1);
+        assert_eq!(links[0].target, 100);
+    }
+
+    #[test]
+    fn scan_finds_multiple_dot_leader_links() {
+        let lines = vec![line("Inrikes.......101"), line("Snörapporten..420")];
+        let links = scan_links(&lines);
+        assert_eq!(links.len(), 2);
+        assert_eq!(links[0].target, 101);
+        assert_eq!(links[1].target, 420);
+    }
+
+    #[test]
+    fn scan_rejects_single_dot_before_three_digits() {
+        // A single '.' looks decimal-y, not leader-y. Without an
+        // adjacent additional '.' on the left, treat it as decimal-style.
+        let lines = vec![line("X.100")];
         let links = scan_links(&lines);
         assert!(links.is_empty());
     }
