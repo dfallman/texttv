@@ -713,26 +713,43 @@ fn run_inner<W: Write>(initial_page: u16, out: &mut W) -> Result<()> {
     start_fetch(&mut state, initial_page);
     draw(&state, out)?;
 
+    // Redraw only when state actually changes. Without this, the screen
+    // would repaint every 80 ms (each `poll` timeout) even at idle,
+    // producing visible cursor / inverse-video flicker.
     loop {
-        drain_fetch(&mut state);
+        let mut dirty = false;
+
+        if drain_fetch(&mut state) {
+            dirty = true;
+        }
 
         let timed_out = !poll(SPINNER_INTERVAL).context("polling for events")?;
 
         if timed_out {
-            tick(&mut state);
+            // Only advance the spinner (and redraw) while a fetch is in
+            // flight. Pure-idle ticks are a no-op.
+            if matches!(state.fetch, FetchState::Fetching { .. }) {
+                tick(&mut state);
+                dirty = true;
+            }
         } else {
             match read().context("reading terminal event")? {
-                Event::Key(k) if k.kind == KeyEventKind::Press => match handle_key(&mut state, k) {
-                    Action::None => {}
-                    Action::Quit => break,
-                    Action::StartFetch(page) => start_fetch(&mut state, page),
-                },
-                Event::Resize(_, _) => {} // just redraw below
+                Event::Key(k) if k.kind == KeyEventKind::Press => {
+                    match handle_key(&mut state, k) {
+                        Action::None => {}
+                        Action::Quit => break,
+                        Action::StartFetch(page) => start_fetch(&mut state, page),
+                    }
+                    dirty = true;
+                }
+                Event::Resize(_, _) => dirty = true,
                 _ => {}
             }
         }
 
-        draw(&state, out)?;
+        if dirty {
+            draw(&state, out)?;
+        }
     }
     Ok(())
 }
@@ -759,14 +776,15 @@ fn start_fetch(state: &mut State, page: u16) {
 }
 
 /// Drain a completed fetch result if one is waiting. Updates state in
-/// place.
-fn drain_fetch(state: &mut State) {
+/// place. Returns `true` when state changed (caller should redraw).
+fn drain_fetch(state: &mut State) -> bool {
     let Some(rx) = state.pending_rx.as_ref() else {
-        return;
+        return false;
     };
     match rx.try_recv() {
         Ok(Ok(cp)) => {
             state.install_page(cp);
+            true
         }
         Ok(Err(_)) => {
             // The worker reported a load failure. Commit the target page
@@ -778,14 +796,16 @@ fn drain_fetch(state: &mut State) {
                 FetchState::Idle => state.current_page,
             };
             state.install_placeholder(target);
+            true
         }
-        Err(TryRecvError::Empty) => {}
+        Err(TryRecvError::Empty) => false,
         Err(TryRecvError::Disconnected) => {
             let target = match state.fetch {
                 FetchState::Fetching { target_page, .. } => target_page,
                 FetchState::Idle => state.current_page,
             };
             state.install_placeholder(target);
+            true
         }
     }
 }
