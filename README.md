@@ -178,6 +178,31 @@ to built-in defaults; unknown keys are an error.
 Decoded mosaic patterns persist to `$XDG_CACHE_HOME/texttv/mosaics/` so a
 given pattern is fetched once across all runs.
 
+## Translation
+
+SVT Text-TV is in Swedish, somewhat obviously. A built-in translation engine is
+out of scope for this application. However, there are ways around this if you
+don't speak Swedish (and yes, learning Swedish is one too!)
+
+First of all, make sure to use the teletext mode (`--mode teletext`) which outputs
+the pages as text. You can also use `--no-color` for added clarity.
+
+Then you can either copy and paste the outputed text into a translation engine or
+an LLM, or you can use terminal-based translation engines such as `translate-shell`.
+
+```
+brew install translate-shell
+```
+
+With it installed, pipe the output of `texttv` into the translation engine:
+
+```
+texttv 100 | trans -b sv:en
+```
+
+Not perfect, but you'll get the gist of it.
+
+
 ## License
 
-MIT or Apache-2.0, at your option.
+MIT
