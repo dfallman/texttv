@@ -13,10 +13,7 @@ use crossterm::{
     event::{Event, KeyCode, KeyEvent, KeyEventKind, poll, read},
     execute,
     style::Print,
-    terminal::{
-        Clear, ClearType, EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode,
-        enable_raw_mode,
-    },
+    terminal::{EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode},
 };
 use owo_colors::OwoColorize;
 
@@ -327,6 +324,10 @@ pub fn tick(state: &mut State) {
 /// page's 40 data cells + 1 right-edge frame cell.
 const CHROME_WIDTH: usize = 41;
 
+/// Number of rows reserved for the page body (rows 0..PAGE_HEIGHT_MAX).
+/// A standard SVT teletext page is 24 visible rows + 1 status row = 25.
+const PAGE_HEIGHT_MAX: u16 = 25;
+
 /// Compose the input-row content. Layout shifted one cell right so col 0
 /// is a margin matching the visual breathing room around the page:
 ///
@@ -352,48 +353,62 @@ fn input_row(state: &State) -> String {
     format!(" {glyph} {digits}")
 }
 
-/// Paint a single chrome row (input or hint) with the page's white-on-black
-/// colors, padded out to `CHROME_WIDTH` so the row visually blends with
-/// the page below it.
-fn paint_chrome_row<W: Write>(out: &mut W, row: u16, content: &str) -> anyhow::Result<()> {
-    out.queue(MoveTo(0, row))?;
-    out.queue(Clear(ClearType::CurrentLine))?;
-    let visible: String = content.chars().take(CHROME_WIDTH).collect();
-    let visible_width = visible.chars().count();
-    let pad = CHROME_WIDTH.saturating_sub(visible_width);
-    let line = format!("{visible}{:pad$}", "", pad = pad);
-    let styled = line
-        .truecolor(255, 255, 255)
-        .on_truecolor(0, 0, 0)
-        .to_string();
-    out.queue(Print(styled))?;
+/// Pad `text` to `width` cells by centering it, with the surplus split
+/// roughly evenly between left and right (left gets the lesser half on
+/// odd remainders). Used for the hint bar.
+fn center_padded(text: &str, width: usize) -> String {
+    let visible: String = text.chars().take(width).collect();
+    let vlen = visible.chars().count();
+    if vlen >= width {
+        return visible;
+    }
+    let total_pad = width - vlen;
+    let left = total_pad / 2;
+    let right = total_pad - left;
+    format!("{:left$}{visible}{:right$}", "", "")
+}
+
+/// Paint a uniform black background covering the page body before any
+/// content is drawn on top. Eliminates the flicker that would otherwise
+/// show during the initial fetch (when `state.lines` is still empty) and
+/// fills the area between a short page and the hint bar with the same
+/// dark surface that `render_colored`'s cells emit.
+fn paint_black_canvas<W: Write>(out: &mut W) -> anyhow::Result<()> {
+    let row: String = " ".repeat(CHROME_WIDTH);
+    let styled = row.on_truecolor(0, 0, 0).to_string();
+    for row in 0..PAGE_HEIGHT_MAX {
+        out.queue(MoveTo(0, row))?;
+        out.queue(Print(&styled))?;
+    }
     Ok(())
 }
 
 /// Full redraw of the interactive screen. `out` is typically stdout in
 /// raw mode wrapped in a BufWriter; tests pass a `Vec<u8>`.
 pub fn draw<W: Write>(state: &State, out: &mut W) -> anyhow::Result<()> {
-    // Row 0: input field. Chrome row, white-on-black to match the page.
-    paint_chrome_row(out, 0, &input_row(state))?;
+    // Black canvas under everything. Short pages and initial-load
+    // (no-page-yet) states then have a uniform dark surface instead of
+    // terminal-default bg flickering through.
+    paint_black_canvas(out)?;
 
-    // Rows 1..=N: page body. Each row gets an explicit MoveTo so raw
-    // mode's missing carriage-return doesn't leave the cursor drifting.
+    // Page body starts at row 0. The page's own top row carries the page
+    // number — we overwrite the leftmost cells with our input overlay so
+    // the page-number area doubles as the editor.
     for (i, line) in state.lines.iter().enumerate() {
-        out.queue(MoveTo(0, (i as u16) + 1))?;
-        out.queue(Clear(ClearType::CurrentLine))?;
+        out.queue(MoveTo(0, i as u16))?;
         let slice = std::slice::from_ref(line);
         crate::render::render_colored(slice, true, out)?;
     }
 
-    // Selected-link highlight: overlay reverse video on the link's run
-    // of cells. Run after the body render so we paint over the original
-    // colors with `\x1b[7m … \x1b[27m` around the visible characters.
+    // Selected-link highlight: reverse-video overlay. Row is 0-based
+    // within the page body, which now matches absolute terminal rows
+    // since the page starts at row 0.
     if let Some(sel) = state.selected
         && let Some(link) = state.links.get(sel)
     {
         let row_idx = link.row as usize;
         if let Some(line) = state.lines.get(row_idx) {
-            out.queue(MoveTo(link.col_start, link.row + 1))?;
+            out.queue(MoveTo(link.col_start, link.row))?;
             let visible = visible_chars_at(line, link.col_start, link.col_len);
             out.queue(Print("\x1b[7m"))?;
             out.queue(Print(visible))?;
@@ -401,15 +416,30 @@ pub fn draw<W: Write>(state: &State, out: &mut W) -> anyhow::Result<()> {
         }
     }
 
-    // Hint bar: placed immediately below the last page row so there's no
-    // dead space for short pages. Also a chrome row.
-    let hint_row = 1 + state.lines.len() as u16;
-    let hint = state.status.as_deref().unwrap_or("↑↓ · Enter · Esc quit");
-    paint_chrome_row(out, hint_row, hint)?;
+    // Input overlay on row 0, cols 0..6. White-on-black so it visually
+    // replaces the page's existing page-number cells with our editor.
+    out.queue(MoveTo(0, 0))?;
+    let input = input_row(state);
+    let styled = input
+        .truecolor(255, 255, 255)
+        .on_truecolor(0, 0, 0)
+        .to_string();
+    out.queue(Print(styled))?;
+
+    // Hint at row `PAGE_HEIGHT_MAX` (just below the page area), centered
+    // within `CHROME_WIDTH`. Sits on the black canvas so short pages get
+    // a clean dark band between the page content and the hint.
+    out.queue(MoveTo(0, PAGE_HEIGHT_MAX))?;
+    let hint_text = state.status.as_deref().unwrap_or("↑↓ · Enter · Esc quit");
+    let centered = center_padded(hint_text, CHROME_WIDTH);
+    let styled = centered
+        .truecolor(255, 255, 255)
+        .on_truecolor(0, 0, 0)
+        .to_string();
+    out.queue(Print(styled))?;
 
     // Park the system cursor at the next typing position in the input
-    // zone. No Hide/Show pair — the terminal's native cursor (block, bar,
-    // underline, whatever the user has configured) stays visible
+    // zone. No Hide/Show pair — the terminal's native cursor stays visible
     // throughout.
     let cursor_col = 3 + (state.input_buf.len() as u16);
     out.queue(MoveTo(cursor_col, 0))?;
@@ -458,12 +488,12 @@ pub fn run(initial_page: u16) -> Result<()> {
     }
 
     // The layout needs 41 cols (40-cell page + right-edge frame) and
-    // 27 rows (input + 25 page + hint). Smaller windows would render
-    // chrome on top of the page or vice versa.
+    // 26 rows (25-row page area + 1 hint row). The input field overlays
+    // the page's own top row, so there's no dedicated chrome row above.
     let (cols, rows) = crossterm::terminal::size().context("reading terminal size")?;
-    if cols < 41 || rows < 27 {
+    if cols < 41 || rows < 26 {
         return Err(anyhow!(
-            "terminal too small ({cols}x{rows}); need at least 41x27"
+            "terminal too small ({cols}x{rows}); need at least 41x26"
         ));
     }
 
@@ -893,6 +923,22 @@ mod tests {
             combined.contains("Sidan finns inte"),
             "placeholder text missing: {combined}"
         );
+    }
+
+    #[test]
+    fn center_padded_centers_text_within_even_width() {
+        assert_eq!(center_padded("hi", 6), "  hi  ");
+    }
+
+    #[test]
+    fn center_padded_uses_extra_on_right_when_odd() {
+        // width 4, content 1 char → 3 pad → 1 left + 2 right
+        assert_eq!(center_padded("x", 4), " x  ");
+    }
+
+    #[test]
+    fn center_padded_truncates_when_too_long() {
+        assert_eq!(center_padded("abcdef", 3), "abc");
     }
 
     #[test]
