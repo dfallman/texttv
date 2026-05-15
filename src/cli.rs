@@ -87,8 +87,9 @@ impl Size {
     styles = HELP_STYLES,
 )]
 pub struct Args {
-    /// Page number in 100..=999. Omit only with --list.
-    #[arg(value_parser = parse_page, required_unless_present = "list")]
+    /// Page number in 100..=999. Omit with --list, --interactive, or
+    /// bare `texttv` (which also enters interactive mode at page 100).
+    #[arg(value_parser = parse_page)]
     pub page: Option<u16>,
 
     /// Rendering mode. If unset, picks `auto` on terminals with high-quality
@@ -114,6 +115,13 @@ pub struct Args {
     /// Print the well-known section index and exit.
     #[arg(long)]
     pub list: bool,
+
+    /// Launch the interactive page browser (same as running bare
+    /// `texttv`). Renders page 100, lets you type page numbers, and
+    /// arrow-key navigate three-digit links found on the rendered page.
+    /// Esc quits.
+    #[arg(short = 'i', long)]
+    pub interactive: bool,
 
     /// Print the detected rendering protocol to stderr before drawing.
     #[arg(long)]
@@ -213,10 +221,33 @@ mod tests {
     }
 
     #[test]
-    fn page_required_without_list() {
-        let err = Args::try_parse_from(["texttv"]).unwrap_err();
-        let s = err.to_string().to_lowercase();
-        assert!(s.contains("required") || s.contains("page"), "msg = {err}");
+    fn bare_invocation_is_allowed() {
+        // Bare `texttv` is valid: main.rs interprets a missing page as
+        // an interactive-mode entry.
+        let args = Args::try_parse_from(["texttv"]).expect("parse");
+        assert_eq!(args.page, None);
+        assert!(!args.interactive);
+        assert!(!args.list);
+    }
+
+    #[test]
+    fn parses_short_interactive_flag() {
+        let args = Args::try_parse_from(["texttv", "-i"]).expect("parse");
+        assert!(args.interactive);
+        assert_eq!(args.page, None);
+    }
+
+    #[test]
+    fn parses_long_interactive_flag() {
+        let args = Args::try_parse_from(["texttv", "--interactive"]).expect("parse");
+        assert!(args.interactive);
+    }
+
+    #[test]
+    fn interactive_with_explicit_page() {
+        let args = Args::try_parse_from(["texttv", "-i", "300"]).expect("parse");
+        assert!(args.interactive);
+        assert_eq!(args.page, Some(300));
     }
 
     #[test]
