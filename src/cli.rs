@@ -124,6 +124,12 @@ pub struct Args {
     /// file or `TEXTTV_TIMINGS=1` in the environment.
     #[arg(short, long)]
     pub verbose: bool,
+
+    /// Suppress the blank-row padding above and below the rendered page.
+    /// Padding is on by default; set `padding: false` in the config file
+    /// or pass this flag to turn it off.
+    #[arg(long)]
+    pub no_padding: bool,
 }
 
 fn parse_page(s: &str) -> Result<u16, String> {

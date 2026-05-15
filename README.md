@@ -57,6 +57,7 @@ Requires Rust 1.85+ (edition 2024).
 | `--mode {teletext,auto,kitty,iterm,blocks}` | Pick the rendering path. If unset, picks `auto` on Kitty / Ghostty / WezTerm and `teletext` everywhere else. |
 | `--size {tiny,small,medium,large,xl,full}` | Render size for image modes. Default `medium`. Ignored in teletext mode.     |
 | `--no-color`                            | Strip ANSI color and the right-edge frame; plain mono.                          |
+| `--no-padding`                          | Drop the blank rows above and below the rendered page (padding is on by default). |
 | `--list`                                | Print the section index and exit.                                               |
 | `--source {svt,texttv-nu}`              | Override the data source. Default: `texttv-nu` for teletext mode, `svt` for image modes. |
 | `--debug-protocol`                      | Print the detected graphics protocol on stderr before drawing.                  |
@@ -169,6 +170,10 @@ A complete example with all options at their built-in defaults:
 # Strip ANSI color and the right-edge frame.
 # Equivalent to passing --no-color or setting NO_COLOR=1.
 # no_color: false
+
+# Print a blank row above and below the rendered page. Set to false to
+# render flush against any surrounding output. Equivalent to --no-padding.
+# padding: true
 ```
 
 Unknown keys are rejected with an error so typos don't silently get

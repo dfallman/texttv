@@ -1,4 +1,5 @@
 use clap::Parser;
+use std::io::Write;
 use std::process::ExitCode;
 
 use texttv::cli::{Args, Mode, Size, Source, print_sections};
@@ -99,6 +100,8 @@ fn run(args: Args) -> Result<(), AppError> {
     };
 
     let resolved_size = args.size.or(cfg.size).unwrap_or(Size::Medium);
+    // Padding: one blank row above and below the rendered page. Default on.
+    let padding = !args.no_padding && cfg.padding.unwrap_or(true);
 
     // Source defaults: texttv.nu for the rich text render, svt.se for the GIF.
     let source = args
@@ -129,11 +132,18 @@ fn run(args: Args) -> Result<(), AppError> {
             }
             let mut out = std::io::stdout().lock();
             timing::time("render", || -> Result<(), anyhow::Error> {
-                if no_color {
-                    render_text(&cp.plain, &mut out)
-                } else {
-                    render_colored(&cp.lines, true, &mut out)
+                if padding {
+                    writeln!(out)?;
                 }
+                if no_color {
+                    render_text(&cp.plain, &mut out)?;
+                } else {
+                    render_colored(&cp.lines, true, &mut out)?;
+                }
+                if padding {
+                    writeln!(out)?;
+                }
+                Ok(())
             })
             .map_err(AppError::Runtime)?;
         }
@@ -145,8 +155,17 @@ fn run(args: Args) -> Result<(), AppError> {
             let page_data = timing::time("parse svt html", || extract_page(&html, page))
                 .map_err(AppError::Runtime)?;
             let mut out = std::io::stdout().lock();
-            timing::time("render text", || render_text(&page_data.text, &mut out))
-                .map_err(AppError::Runtime)?;
+            timing::time("render text", || -> Result<(), anyhow::Error> {
+                if padding {
+                    writeln!(out)?;
+                }
+                render_text(&page_data.text, &mut out)?;
+                if padding {
+                    writeln!(out)?;
+                }
+                Ok(())
+            })
+            .map_err(AppError::Runtime)?;
         }
         (image_mode, _) => {
             // Image rendering requires the GIF, which only svt.se serves.
@@ -161,8 +180,17 @@ fn run(args: Args) -> Result<(), AppError> {
                 size: resolved_size,
                 debug_protocol: args.debug_protocol,
             };
-            timing::time("render image", || render_images(&page_data.images, opts))
-                .map_err(AppError::Runtime)?;
+            timing::time("render image", || -> Result<(), anyhow::Error> {
+                if padding {
+                    println!();
+                }
+                render_images(&page_data.images, opts)?;
+                if padding {
+                    println!();
+                }
+                Ok(())
+            })
+            .map_err(AppError::Runtime)?;
         }
     }
     Ok(())
