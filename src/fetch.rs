@@ -21,10 +21,9 @@ pub fn fetch_html(page: u16) -> Result<String> {
     do_get(&url)
 }
 
-/// Optional fallback source: api.texttv.nu returns JSON with the raw text body
-/// but no GIFs. Used only behind --source texttv-nu. We still return the body
-/// verbatim — the parser knows how to handle the JSON shape via a separate path.
-pub fn fetch_html_texttv_nu(page: u16) -> Result<String> {
+/// api.texttv.nu returns JSON whose `content[0]` is the page rendered as HTML
+/// with per-cell color classes — that's what `parse_texttv_nu` consumes.
+pub fn fetch_texttv_nu(page: u16) -> Result<String> {
     let url = format!("https://api.texttv.nu/api/get/{page}?app=texttv-rs");
     do_get(&url)
 }

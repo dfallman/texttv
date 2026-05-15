@@ -12,6 +12,8 @@ viuer = "0.9"
 image = { version = "0.25", default-features = false, features = ["gif"] }
 base64 = "0.22"
 scraper = "0.20"
+serde_json = "1"
+owo-colors = "4"
 anyhow = "1"
 thiserror = "1"
 

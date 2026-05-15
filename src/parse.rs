@@ -93,3 +93,195 @@ fn collect_text(node: scraper::ElementRef<'_>) -> String {
     }
     out.trim_end().to_string()
 }
+
+// ============================================================================
+// Colored render path: parse texttv.nu's classed HTML into a structured page.
+// ============================================================================
+
+/// Teletext color palette (8 saturated primaries).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TtColor {
+    Black,
+    Red,
+    Green,
+    Yellow,
+    Blue,
+    Magenta,
+    Cyan,
+    White,
+}
+
+impl TtColor {
+    pub fn rgb(self) -> (u8, u8, u8) {
+        match self {
+            Self::Black => (0, 0, 0),
+            Self::Red => (255, 0, 0),
+            Self::Green => (0, 255, 0),
+            Self::Yellow => (255, 255, 0),
+            Self::Blue => (0, 0, 255),
+            Self::Magenta => (255, 0, 255),
+            Self::Cyan => (0, 255, 255),
+            Self::White => (255, 255, 255),
+        }
+    }
+}
+
+/// One contiguous run of cells sharing the same color attributes.
+#[derive(Debug, Clone)]
+pub struct Cell {
+    /// Visible text (spaces preserved). For mosaic cells this is the width-equivalent run of spaces.
+    pub text: String,
+    pub fg: TtColor,
+    pub bg: TtColor,
+    /// True for teletext mosaic block-graphics — rendered as a colored space until we map them.
+    pub mosaic: bool,
+}
+
+#[derive(Debug, Clone)]
+pub struct Line {
+    pub cells: Vec<Cell>,
+    /// Whether this line is double-height (teletext DH attribute).
+    pub double_height: bool,
+}
+
+#[derive(Debug)]
+pub struct ColoredPage {
+    pub page_no: u16,
+    pub lines: Vec<Line>,
+    /// content_plain from the JSON, used when colors are disabled.
+    pub plain: String,
+}
+
+pub fn parse_texttv_nu(json: &str, page_no: u16) -> Result<ColoredPage> {
+    let v: serde_json::Value =
+        serde_json::from_str(json).context("texttv.nu response is not valid JSON")?;
+    let entry = v
+        .get(0)
+        .ok_or_else(|| anyhow!("page {page_no} not available (empty texttv.nu response)"))?;
+    let content_html = entry
+        .get("content")
+        .and_then(|c| c.get(0))
+        .and_then(|s| s.as_str())
+        .ok_or_else(|| anyhow!("page {page_no}: missing content[0] in texttv.nu JSON"))?;
+    let lines = parse_colored_html(content_html);
+    if lines.is_empty() {
+        return Err(anyhow!("page {page_no} not available (no lines parsed)"));
+    }
+    // texttv.nu sometimes omits content_plain — derive it from the parsed lines
+    // so the --no-color path always has something to print.
+    let plain = derive_plain(&lines);
+    Ok(ColoredPage {
+        page_no,
+        lines,
+        plain,
+    })
+}
+
+fn derive_plain(lines: &[Line]) -> String {
+    let mut out = String::new();
+    for line in lines {
+        for cell in &line.cells {
+            out.push_str(&cell.text);
+        }
+        let trimmed_len = out.trim_end_matches(' ').len();
+        out.truncate(trimmed_len);
+        out.push('\n');
+    }
+    out.trim_end().to_string()
+}
+
+fn parse_colored_html(html: &str) -> Vec<Line> {
+    let frag = Html::parse_fragment(html);
+    let line_sel = Selector::parse("span.line").expect("static selector");
+    let span_sel = Selector::parse(":scope > span").expect("static selector");
+
+    let mut lines = Vec::new();
+    for line_el in frag.select(&line_sel) {
+        let classes = line_el.value().attr("class").unwrap_or("");
+        let double_height = classes.split_whitespace().any(|c| c == "DH");
+        let mut cells: Vec<Cell> = Vec::new();
+        for cell_el in line_el.select(&span_sel) {
+            let cls = cell_el.value().attr("class").unwrap_or("");
+            let (fg, bg, mosaic) = parse_cell_classes(cls);
+            let text: String = cell_el.text().collect();
+            // Mosaic spans have no inner text — preserve a single-space placeholder
+            // so the line keeps its width.
+            let text = if mosaic && text.is_empty() {
+                " ".to_string()
+            } else {
+                text
+            };
+            if text.is_empty() {
+                continue;
+            }
+            // Merge consecutive cells with identical attributes to keep escapes minimal.
+            if let Some(last) = cells.last_mut()
+                && last.fg == fg
+                && last.bg == bg
+                && last.mosaic == mosaic
+            {
+                last.text.push_str(&text);
+            } else {
+                cells.push(Cell {
+                    text,
+                    fg,
+                    bg,
+                    mosaic,
+                });
+            }
+        }
+        if !cells.is_empty() {
+            lines.push(Line {
+                cells,
+                double_height,
+            });
+        }
+    }
+    lines
+}
+
+fn parse_cell_classes(class_attr: &str) -> (TtColor, TtColor, bool) {
+    let mut fg = TtColor::White;
+    let mut bg = TtColor::Black;
+    let mut mosaic = false;
+    for tok in class_attr.split_whitespace() {
+        if tok == "bgImg" {
+            mosaic = true;
+        } else if let Some(c) = bg_from_token(tok) {
+            bg = c;
+        } else if let Some(c) = fg_from_token(tok) {
+            fg = c;
+        }
+        // 'line', 'toprow', 'DH', 'root' fall through; handled elsewhere.
+    }
+    (fg, bg, mosaic)
+}
+
+fn fg_from_token(tok: &str) -> Option<TtColor> {
+    match tok {
+        "W" => Some(TtColor::White),
+        "Y" => Some(TtColor::Yellow),
+        "R" => Some(TtColor::Red),
+        "G" => Some(TtColor::Green),
+        "B" => Some(TtColor::Blue),
+        "C" => Some(TtColor::Cyan),
+        "M" => Some(TtColor::Magenta),
+        "bl" => Some(TtColor::Black),
+        _ => None,
+    }
+}
+
+fn bg_from_token(tok: &str) -> Option<TtColor> {
+    let suf = tok.strip_prefix("bg")?;
+    match suf {
+        "W" => Some(TtColor::White),
+        "Y" => Some(TtColor::Yellow),
+        "R" => Some(TtColor::Red),
+        "G" => Some(TtColor::Green),
+        "B" => Some(TtColor::Blue),
+        "C" => Some(TtColor::Cyan),
+        "M" => Some(TtColor::Magenta),
+        "Bl" => Some(TtColor::Black),
+        _ => None,
+    }
+}

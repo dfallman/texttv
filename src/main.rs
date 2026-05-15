@@ -3,15 +3,15 @@ use std::process::ExitCode;
 
 use texttv::cli::{Args, Mode, Source, print_sections};
 use texttv::fetch;
-use texttv::parse::extract_page;
-use texttv::render::{RenderOptions, render_images, render_text, stdout_is_tty};
+use texttv::parse::{extract_page, parse_texttv_nu};
+use texttv::render::{
+    RenderOptions, render_colored, render_images, render_text, stdout_is_tty,
+};
 
 fn main() -> ExitCode {
     let args = match Args::try_parse() {
         Ok(a) => a,
         Err(e) => {
-            // clap defaults to exit code 2 for parse errors; --help/--version are also Err
-            // with ErrorKind::DisplayHelp/DisplayVersion. Route those to exit 0.
             let _ = e.print();
             return match e.kind() {
                 clap::error::ErrorKind::DisplayHelp
@@ -50,31 +50,51 @@ fn run(args: Args) -> Result<(), AppError> {
         .page
         .ok_or_else(|| AppError::User("PAGE is required".into()))?;
 
-    let html = match args.source {
-        Source::Svt => fetch::fetch_html(page),
-        Source::TexttvNu => fetch::fetch_html_texttv_nu(page),
-    }
-    .map_err(AppError::Runtime)?;
-
-    let page_data = extract_page(&html, page).map_err(AppError::Runtime)?;
-
-    let no_color = args.no_color || std::env::var_os("NO_COLOR").is_some();
     let piped = !stdout_is_tty();
+    // Piped stdout, NO_COLOR=1, or --no-color all disable ANSI escapes.
+    // This matches the NO_COLOR informal spec and keeps `texttv 300 | grep`
+    // working as plain text.
+    let no_color = args.no_color || std::env::var_os("NO_COLOR").is_some() || piped;
 
+    // --mode auto on a piped stdout dumps escape codes, so degrade to text.
     let effective_mode = if piped && matches!(args.mode, Mode::Auto) {
         Mode::Text
     } else {
         args.mode
     };
 
-    match effective_mode {
-        Mode::Text => {
+    // Source defaults: texttv.nu for the rich text render, svt.se for the GIF.
+    let source = args.source.unwrap_or(match effective_mode {
+        Mode::Text => Source::TexttvNu,
+        _ => Source::Svt,
+    });
+
+    match (effective_mode, source) {
+        (Mode::Text, Source::TexttvNu) => {
+            let json = fetch::fetch_texttv_nu(page).map_err(AppError::Runtime)?;
+            let cp = parse_texttv_nu(&json, page).map_err(AppError::Runtime)?;
             let mut out = std::io::stdout().lock();
-            render_text(&page_data.text, !no_color, &mut out).map_err(AppError::Runtime)?;
+            if no_color {
+                // --no-color strips both color and double-height (DEC escapes
+                // would render visually large even without color).
+                render_text(&cp.plain, &mut out).map_err(AppError::Runtime)?;
+            } else {
+                render_colored(&cp.lines, true, true, &mut out)
+                    .map_err(AppError::Runtime)?;
+            }
         }
-        _ => {
+        (Mode::Text, Source::Svt) => {
+            let html = fetch::fetch_html(page).map_err(AppError::Runtime)?;
+            let page_data = extract_page(&html, page).map_err(AppError::Runtime)?;
+            let mut out = std::io::stdout().lock();
+            render_text(&page_data.text, &mut out).map_err(AppError::Runtime)?;
+        }
+        (image_mode, _) => {
+            // Image rendering requires the GIF, which only svt.se serves.
+            let html = fetch::fetch_html(page).map_err(AppError::Runtime)?;
+            let page_data = extract_page(&html, page).map_err(AppError::Runtime)?;
             let opts = RenderOptions {
-                mode: effective_mode,
+                mode: image_mode,
                 debug_protocol: args.debug_protocol,
             };
             render_images(&page_data.images, opts).map_err(AppError::Runtime)?;
