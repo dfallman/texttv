@@ -13,7 +13,7 @@ use std::collections::HashMap;
 use std::sync::{Mutex, OnceLock};
 use std::time::Duration;
 
-use crate::parse::TtColor;
+use crate::parse::{ColoredPage, TtColor};
 
 const FETCH_TIMEOUT_SECS: u64 = 5;
 const USER_AGENT: &str = concat!(
@@ -21,6 +21,21 @@ const USER_AGENT: &str = concat!(
     env!("CARGO_PKG_VERSION"),
     " (+mosaic-fetch)"
 );
+
+/// Shared HTTP agent. Building one fresh per call meant a new TLS handshake
+/// every fetch — death by latency on a page with a dozen unique mosaics.
+/// A single Agent pools the underlying TCP/TLS connection across all
+/// requests in this process.
+fn agent() -> &'static ureq::Agent {
+    static A: OnceLock<ureq::Agent> = OnceLock::new();
+    A.get_or_init(|| {
+        ureq::AgentBuilder::new()
+            .timeout_connect(Duration::from_secs(3))
+            .timeout_read(Duration::from_secs(FETCH_TIMEOUT_SECS))
+            .user_agent(USER_AGENT)
+            .build()
+    })
+}
 
 /// In-process cache of mosaic patterns. Keyed by URL because the URL hash is
 /// what texttv.nu serves; same hash → same pattern, regardless of which
@@ -46,13 +61,45 @@ pub fn resolve_pattern(url: &str, fg: TtColor, bg: TtColor) -> Result<u8> {
     Ok(pattern)
 }
 
+/// Pre-fetch every unique mosaic URL in the page in parallel so the render
+/// loop can hit the cache for every cell. Failed fetches are recorded as
+/// cache misses (the render path falls back to a colored space). Caller
+/// invokes this once between parse and render.
+pub fn prefetch_page(page: &ColoredPage) {
+    let mut seen: HashMap<String, (TtColor, TtColor)> = HashMap::new();
+    for line in &page.lines {
+        for cell in &line.cells {
+            if let Some(url) = cell.mosaic_url.as_deref()
+                && !seen.contains_key(url)
+            {
+                // Skip URLs already cached from a previous render.
+                if let Ok(guard) = cache().lock()
+                    && guard.contains_key(url)
+                {
+                    continue;
+                }
+                seen.insert(url.to_string(), (cell.fg, cell.bg));
+            }
+        }
+    }
+    if seen.is_empty() {
+        return;
+    }
+    let items: Vec<_> = seen.into_iter().collect();
+    std::thread::scope(|s| {
+        for (url, (fg, bg)) in &items {
+            s.spawn(move || {
+                let _ = resolve_pattern(url, *fg, *bg);
+            });
+        }
+    });
+}
+
 fn fetch(url: &str) -> Result<Vec<u8>> {
-    let agent = ureq::AgentBuilder::new()
-        .timeout_connect(Duration::from_secs(3))
-        .timeout_read(Duration::from_secs(FETCH_TIMEOUT_SECS))
-        .user_agent(USER_AGENT)
-        .build();
-    let resp = agent.get(url).call().with_context(|| format!("GET {url}"))?;
+    let resp = agent()
+        .get(url)
+        .call()
+        .with_context(|| format!("GET {url}"))?;
     let mut buf = Vec::new();
     use std::io::Read;
     resp.into_reader()

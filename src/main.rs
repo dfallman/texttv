@@ -4,6 +4,7 @@ use std::process::ExitCode;
 use texttv::cli::{Args, Mode, Size, Source, print_sections};
 use texttv::config::Config;
 use texttv::fetch;
+use texttv::mosaic;
 use texttv::parse::{extract_page, parse_texttv_nu};
 use texttv::render::{
     RenderOptions, render_colored, render_images, render_text, stdout_is_tty,
@@ -93,6 +94,11 @@ fn run(args: Args) -> Result<(), AppError> {
         (Mode::Teletext, Source::TexttvNu) => {
             let json = fetch::fetch_texttv_nu(page).map_err(AppError::Runtime)?;
             let cp = parse_texttv_nu(&json, page).map_err(AppError::Runtime)?;
+            if !no_color {
+                // Warm the mosaic cache in parallel before we start writing
+                // to stdout. The render path then hits cache for every cell.
+                mosaic::prefetch_page(&cp);
+            }
             let mut out = std::io::stdout().lock();
             if no_color {
                 // --no-color strips both color and double-height (DEC escapes
