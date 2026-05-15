@@ -1,0 +1,28 @@
+[package]
+name = "texttv"
+version = "0.1.0"
+edition = "2024"
+description = "Render SVT Text-TV pages in the terminal"
+license = "MIT OR Apache-2.0"
+
+[dependencies]
+clap = { version = "4", features = ["derive"] }
+ureq = { version = "2", features = ["tls"] }
+viuer = "0.9"
+image = { version = "0.25", default-features = false, features = ["gif"] }
+base64 = "0.22"
+scraper = "0.20"
+anyhow = "1"
+thiserror = "1"
+
+[profile.release]
+lto = "thin"
+strip = "symbols"
+
+[lints.rust]
+unsafe_code = "forbid"
+unused_must_use = "deny"
+
+[lints.clippy]
+unwrap_used = "deny"
+expect_used = "deny"
