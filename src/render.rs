@@ -36,9 +36,18 @@ pub fn render_images(images: &[DynamicImage], opts: RenderOptions) -> Result<Det
             let p = detect_protocol();
             (config_for(p, target_width), p)
         }
-        Mode::Kitty => (force_config(true, false, target_width), DetectedProtocol::Kitty),
-        Mode::Iterm => (force_config(false, true, target_width), DetectedProtocol::Iterm),
-        Mode::Blocks => (force_config(false, false, target_width), DetectedProtocol::Halfblocks),
+        Mode::Kitty => (
+            force_config(true, false, target_width),
+            DetectedProtocol::Kitty,
+        ),
+        Mode::Iterm => (
+            force_config(false, true, target_width),
+            DetectedProtocol::Iterm,
+        ),
+        Mode::Blocks => (
+            force_config(false, false, target_width),
+            DetectedProtocol::Halfblocks,
+        ),
         Mode::Teletext => unreachable!("Mode::Teletext is handled before render_images"),
     };
 
@@ -233,9 +242,7 @@ fn write_line(
                 write!(
                     out,
                     "{}",
-                    render_text
-                        .truecolor(fr, fg, fb)
-                        .on_truecolor(br, bg, bb)
+                    render_text.truecolor(fr, fg, fb).on_truecolor(br, bg, bb)
                 )?;
             }
         } else {

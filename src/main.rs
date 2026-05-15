@@ -7,10 +7,8 @@ use texttv::config::Config;
 use texttv::fetch;
 use texttv::mosaic;
 use texttv::parse::{extract_page, parse_texttv_nu};
+use texttv::render::{RenderOptions, render_colored, render_images, render_text, stdout_is_tty};
 use texttv::timing;
-use texttv::render::{
-    RenderOptions, render_colored, render_images, render_text, stdout_is_tty,
-};
 
 fn main() -> ExitCode {
     let args = match Args::try_parse() {
@@ -127,13 +125,10 @@ fn run(args: Args) -> Result<(), AppError> {
     let padding = !args.no_padding && cfg.padding.unwrap_or(true);
 
     // Source defaults: texttv.nu for the rich text render, svt.se for the GIF.
-    let source = args
-        .source
-        .or(cfg.source)
-        .unwrap_or(match effective_mode {
-            Mode::Teletext => Source::TexttvNu,
-            _ => Source::Svt,
-        });
+    let source = args.source.or(cfg.source).unwrap_or(match effective_mode {
+        Mode::Teletext => Source::TexttvNu,
+        _ => Source::Svt,
+    });
 
     match (effective_mode, source) {
         (Mode::Teletext, Source::TexttvNu) => {
@@ -141,10 +136,8 @@ fn run(args: Args) -> Result<(), AppError> {
                 fetch::fetch_texttv_nu(page)
             })
             .map_err(AppError::Runtime)?;
-            let cp = timing::time("parse colored html", || {
-                parse_texttv_nu(&json, page)
-            })
-            .map_err(AppError::Runtime)?;
+            let cp = timing::time("parse colored html", || parse_texttv_nu(&json, page))
+                .map_err(AppError::Runtime)?;
             if !no_color {
                 let n = unique_mosaic_count(&cp);
                 if n > 0 {
@@ -171,10 +164,8 @@ fn run(args: Args) -> Result<(), AppError> {
             .map_err(AppError::Runtime)?;
         }
         (Mode::Teletext, Source::Svt) => {
-            let html = timing::time(&format!("fetch svt.se/{page}"), || {
-                fetch::fetch_html(page)
-            })
-            .map_err(AppError::Runtime)?;
+            let html = timing::time(&format!("fetch svt.se/{page}"), || fetch::fetch_html(page))
+                .map_err(AppError::Runtime)?;
             let page_data = timing::time("parse svt html", || extract_page(&html, page))
                 .map_err(AppError::Runtime)?;
             let mut out = std::io::stdout().lock();
@@ -192,10 +183,8 @@ fn run(args: Args) -> Result<(), AppError> {
         }
         (image_mode, _) => {
             // Image rendering requires the GIF, which only svt.se serves.
-            let html = timing::time(&format!("fetch svt.se/{page}"), || {
-                fetch::fetch_html(page)
-            })
-            .map_err(AppError::Runtime)?;
+            let html = timing::time(&format!("fetch svt.se/{page}"), || fetch::fetch_html(page))
+                .map_err(AppError::Runtime)?;
             let page_data = timing::time("decode page GIF", || extract_page(&html, page))
                 .map_err(AppError::Runtime)?;
             let opts = RenderOptions {

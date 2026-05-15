@@ -120,6 +120,11 @@ fn write_disk_cache(url: &str, pattern: u8) {
     }
 }
 
+/// Upper bound on prefetch worker threads. Real pages have ~5–20 unique
+/// mosaics, but pathological input could push that higher. A cap keeps us
+/// from spawning an unbounded thread pile-up.
+const MAX_PREFETCH_WORKERS: usize = 8;
+
 /// Pre-fetch every unique mosaic URL in the page in parallel so the render
 /// loop can hit the cache for every cell. Failed fetches are recorded as
 /// cache misses (the render path falls back to a colored space). Caller
@@ -144,10 +149,17 @@ pub fn prefetch_page(page: &ColoredPage) {
         return;
     }
     let items: Vec<_> = seen.into_iter().collect();
+    // Divide the work into at most MAX_PREFETCH_WORKERS chunks and process
+    // each chunk on its own thread. This caps thread creation while still
+    // parallelising the I/O — the bottleneck — across cores.
+    let worker_count = items.len().min(MAX_PREFETCH_WORKERS);
+    let chunk_size = items.len().div_ceil(worker_count);
     std::thread::scope(|s| {
-        for (url, (fg, bg)) in &items {
+        for chunk in items.chunks(chunk_size) {
             s.spawn(move || {
-                let _ = resolve_pattern(url, *fg, *bg);
+                for (url, (fg, bg)) in chunk {
+                    let _ = resolve_pattern(url, *fg, *bg);
+                }
             });
         }
     });

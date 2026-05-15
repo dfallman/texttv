@@ -48,26 +48,49 @@ pub fn fetch_texttv_nu(page: u16) -> Result<String> {
     do_get(&url)
 }
 
+/// Number of *additional* attempts after the first one for transient errors.
+/// A value of 1 means up to 2 total tries.
+const RETRY_COUNT: u32 = 1;
+const RETRY_BACKOFF: Duration = Duration::from_millis(300);
+
 fn do_get(url: &str) -> Result<String> {
-    match agent().get(url).call() {
-        Ok(resp) => {
-            use std::io::Read;
-            let mut buf = String::new();
-            // Cap at MAX_BODY_BYTES so a hostile or runaway endpoint can't
-            // exhaust memory by streaming gigabytes. take() reads at most the
-            // cap; if the body is exactly the cap there is no signal to the
-            // caller that it was truncated, but for our two endpoints that
-            // can't happen in practice.
-            resp.into_reader()
-                .take(MAX_BODY_BYTES)
-                .read_to_string(&mut buf)
-                .context("read response body")?;
-            Ok(buf)
+    let mut attempts = 0u32;
+    let resp = loop {
+        match agent().get(url).call() {
+            Ok(resp) => break resp,
+            Err(e) if is_transient(&e) && attempts < RETRY_COUNT => {
+                attempts += 1;
+                std::thread::sleep(RETRY_BACKOFF);
+                continue;
+            }
+            Err(ureq::Error::Status(code, resp)) => {
+                let status_text = resp.status_text().to_string();
+                return Err(anyhow!("HTTP {code} {status_text} for {url}"));
+            }
+            Err(ureq::Error::Transport(t)) => {
+                return Err(anyhow!("network error: {t}"));
+            }
         }
-        Err(ureq::Error::Status(code, resp)) => {
-            let status_text = resp.status_text().to_string();
-            Err(anyhow!("HTTP {code} {status_text} for {url}"))
-        }
-        Err(ureq::Error::Transport(t)) => Err(anyhow!("network error: {t}")),
+    };
+    use std::io::Read;
+    let mut buf = String::new();
+    // Cap at MAX_BODY_BYTES so a hostile or runaway endpoint can't exhaust
+    // memory by streaming gigabytes. take() reads at most the cap; for our
+    // two endpoints exceeding it can't happen in practice.
+    resp.into_reader()
+        .take(MAX_BODY_BYTES)
+        .read_to_string(&mut buf)
+        .context("read response body")?;
+    Ok(buf)
+}
+
+/// Classify a `ureq::Error` as transient (worth retrying) or terminal.
+/// Transport errors (DNS, connect, read-timeout, TLS) are transient; HTTP
+/// 5xx is transient (server-side hiccup); 4xx is terminal (the request
+/// itself won't succeed on retry).
+fn is_transient(e: &ureq::Error) -> bool {
+    match e {
+        ureq::Error::Transport(_) => true,
+        ureq::Error::Status(code, _) => *code >= 500,
     }
 }
