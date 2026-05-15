@@ -135,6 +135,43 @@ For image rendering, `--mode auto` piped degrades to teletext mode; the
 forced graphics modes (`--mode kitty/iterm/blocks`) still emit escape
 sequences, because that's what you asked for.
 
+## Config file
+
+`texttv` reads `~/.config/texttv/config.yaml` on startup (or
+`$XDG_CONFIG_HOME/texttv/config.yaml` if you've set that). The file is
+optional — every setting can also be passed on the command line, and
+CLI flags always win over the config file.
+
+A complete example with all options at their built-in defaults:
+
+```yaml
+# ~/.config/texttv/config.yaml — all options shown commented at their defaults.
+# Uncomment a line to override.
+
+# Rendering mode.
+# Omit to auto-pick based on terminal: `auto` on Kitty/Ghostty/WezTerm,
+# `teletext` everywhere else (iTerm2, Apple Terminal, Alacritty, …).
+# Allowed: teletext | auto | kitty | iterm | blocks
+# mode: teletext
+
+# Render size for image modes. Ignored in teletext mode.
+# Allowed: tiny | small | medium | large | xl | full
+# size: medium
+
+# Data source. Omit to let the mode pick: texttv-nu for teletext mode,
+# svt for image modes.
+# Allowed: texttv-nu | svt
+# source: texttv-nu
+
+# Strip ANSI color and the right-edge frame.
+# Equivalent to passing --no-color or setting NO_COLOR=1.
+# no_color: false
+```
+
+Unknown keys are rejected with an error so typos don't silently get
+ignored. If parsing fails for any reason, `texttv` prints a warning on
+stderr and continues with built-in defaults.
+
 ## Exit codes
 
 | Code | Meaning                                                       |

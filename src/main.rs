@@ -1,7 +1,8 @@
 use clap::Parser;
 use std::process::ExitCode;
 
-use texttv::cli::{Args, Mode, Source, print_sections};
+use texttv::cli::{Args, Mode, Size, Source, print_sections};
+use texttv::config::Config;
 use texttv::fetch;
 use texttv::parse::{extract_page, parse_texttv_nu};
 use texttv::render::{
@@ -50,16 +51,25 @@ fn run(args: Args) -> Result<(), AppError> {
         .page
         .ok_or_else(|| AppError::User("PAGE is required".into()))?;
 
-    let piped = !stdout_is_tty();
-    // Piped stdout, NO_COLOR=1, or --no-color all disable ANSI escapes.
-    // This matches the NO_COLOR informal spec and keeps `texttv 300 | grep`
-    // working as plain text.
-    let no_color = args.no_color || std::env::var_os("NO_COLOR").is_some() || piped;
+    // Load ~/.config/texttv/config.yaml; broken config is non-fatal — we warn
+    // and fall back to defaults, so a typo doesn't lock the user out.
+    let cfg = Config::load().unwrap_or_else(|e| {
+        eprintln!("warning: ignoring config file: {e:#}");
+        Config::default()
+    });
 
-    // Resolve --mode: explicit user value wins; otherwise pick a default based
-    // on the detected terminal.
+    let piped = !stdout_is_tty();
+    // Precedence: CLI flag > config file > built-in default. NO_COLOR env and
+    // a piped stdout always force color off regardless.
+    let no_color = args.no_color
+        || cfg.no_color.unwrap_or(false)
+        || std::env::var_os("NO_COLOR").is_some()
+        || piped;
+
+    // Resolve --mode: CLI wins, then config, then terminal-based default.
     let resolved_mode = args
         .mode
+        .or(cfg.mode)
         .unwrap_or_else(texttv::render::default_mode_for_terminal);
     // --mode auto on a piped stdout dumps escape codes, so degrade to text.
     let effective_mode = if piped && matches!(resolved_mode, Mode::Auto) {
@@ -68,11 +78,16 @@ fn run(args: Args) -> Result<(), AppError> {
         resolved_mode
     };
 
+    let resolved_size = args.size.or(cfg.size).unwrap_or(Size::Medium);
+
     // Source defaults: texttv.nu for the rich text render, svt.se for the GIF.
-    let source = args.source.unwrap_or(match effective_mode {
-        Mode::Teletext => Source::TexttvNu,
-        _ => Source::Svt,
-    });
+    let source = args
+        .source
+        .or(cfg.source)
+        .unwrap_or(match effective_mode {
+            Mode::Teletext => Source::TexttvNu,
+            _ => Source::Svt,
+        });
 
     match (effective_mode, source) {
         (Mode::Teletext, Source::TexttvNu) => {
@@ -99,7 +114,7 @@ fn run(args: Args) -> Result<(), AppError> {
             let page_data = extract_page(&html, page).map_err(AppError::Runtime)?;
             let opts = RenderOptions {
                 mode: image_mode,
-                size: args.size,
+                size: resolved_size,
                 debug_protocol: args.debug_protocol,
             };
             render_images(&page_data.images, opts).map_err(AppError::Runtime)?;
