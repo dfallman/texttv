@@ -10,8 +10,9 @@ pub enum Mode {
     Iterm,
     /// Force Unicode half-block fallback.
     Blocks,
-    /// Skip image rendering; print extracted plain text.
-    Text,
+    /// The default: reconstruct the original 40-col teletext layout
+    /// with per-cell colors and DEC double-height headings.
+    Teletext,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
@@ -29,19 +30,20 @@ pub struct Args {
     #[arg(value_parser = parse_page, required_unless_present = "list")]
     pub page: Option<u16>,
 
-    /// Rendering mode. Defaults to text — the SVT page's screenreader text,
-    /// which is faithful to teletext layout and avoids rendering a bitmap of
-    /// text-as-image. Use --mode auto (or kitty/iterm/blocks) for the image.
-    #[arg(long, value_enum, default_value_t = Mode::Text)]
+    /// Rendering mode. Defaults to teletext — colored, double-height-aware
+    /// 40-column reproduction of the original page. Use --mode auto (or
+    /// kitty/iterm/blocks) to render the page GIF as a bitmap instead.
+    #[arg(long, value_enum, default_value_t = Mode::Teletext)]
     pub mode: Mode,
 
-    /// Data source. Defaults to texttv-nu for text mode (rich color), svt for
-    /// image modes. Override only for debugging or to fall back when the
-    /// preferred source is unreachable.
+    /// Data source. Defaults to texttv-nu for teletext mode (rich color),
+    /// svt for image modes. Override only for debugging or to fall back when
+    /// the preferred source is unreachable.
     #[arg(long, value_enum)]
     pub source: Option<Source>,
 
-    /// Disable ANSI color in text mode.
+    /// Strip ANSI color, the right-edge frame, and DEC double-height
+    /// escapes; produces plain mono output.
     #[arg(long)]
     pub no_color: bool,
 
@@ -97,7 +99,7 @@ mod tests {
     fn parses_valid_page() {
         let args = Args::try_parse_from(["texttv", "300"]).expect("should parse");
         assert_eq!(args.page, Some(300));
-        assert_eq!(args.mode, Mode::Text);
+        assert_eq!(args.mode, Mode::Teletext);
     }
 
     #[test]

@@ -36,7 +36,7 @@ pub fn render_images(images: &[DynamicImage], opts: RenderOptions) -> Result<Det
         Mode::Kitty => (force_kitty_config(), DetectedProtocol::Kitty),
         Mode::Iterm => (force_iterm_config(), DetectedProtocol::Iterm),
         Mode::Blocks => (force_blocks_config(), DetectedProtocol::Halfblocks),
-        Mode::Text => unreachable!("Mode::Text is handled before render_images"),
+        Mode::Teletext => unreachable!("Mode::Teletext is handled before render_images"),
     };
 
     if opts.debug_protocol {
