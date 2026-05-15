@@ -83,11 +83,10 @@ fn add_right_frame(img: &image::DynamicImage, pad_px: u32) -> image::DynamicImag
     image::DynamicImage::ImageRgb8(framed)
 }
 
-/// Half-block fallback fills the terminal horizontally up to this cap. The
-/// SVT GIF is 520 px wide, and half-blocks pack 1 px wide × 2 px tall per
-/// cell, so at 160 cells the rendered page is roughly 160×95 cells —
-/// readable on a typical terminal without going absurdly tall.
-const HALFBLOCKS_MAX_WIDTH: u32 = 160;
+/// Safety cap for the half-block fallback. We fill the terminal width by
+/// default; this just bounds the worst case so an enormous terminal (or a
+/// misreported size) can't push viuer into a multi-second render.
+const HALFBLOCKS_MAX_WIDTH: u32 = 4000;
 
 fn halfblocks_width() -> u32 {
     let term = u32::from(terminal_cols());
