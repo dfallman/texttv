@@ -134,17 +134,19 @@ const MAX_PREFETCH_WORKERS: usize = 8;
 /// invokes this once between parse and render.
 pub fn prefetch_page(page: &ColoredPage) {
     let mut seen: HashMap<String, (TtColor, TtColor)> = HashMap::new();
-    for line in &page.lines {
-        for cell in &line.cells {
-            if let Some(url) = cell.mosaic_url.as_deref()
-                && !seen.contains_key(url)
-            {
-                if let Ok(guard) = cache().lock()
-                    && guard.contains_key(url)
+    for lines in &page.subpages {
+        for line in lines {
+            for cell in &line.cells {
+                if let Some(url) = cell.mosaic_url.as_deref()
+                    && !seen.contains_key(url)
                 {
-                    continue;
+                    if let Ok(guard) = cache().lock()
+                        && guard.contains_key(url)
+                    {
+                        continue;
+                    }
+                    seen.insert(url.to_string(), (cell.fg, cell.bg));
                 }
-                seen.insert(url.to_string(), (cell.fg, cell.bg));
             }
         }
     }
