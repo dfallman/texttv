@@ -15,9 +15,17 @@ texttv --list           # Index of well-known section pages
 
 `PAGE` is any integer in `100..=999`.
 
+## Examples
+
+```  ┌──────────────────────────────────┬───────────────────────────────┬─────────────────────┐  │             Terminal             │       How it's detected       │      Protocol       │  ├──────────────────────────────────┼───────────────────────────────┼─────────────────────┤  │ Kitty                            │ $TERM contains kitty          │ Kitty graphics      │  ├──────────────────────────────────┼───────────────────────────────┼─────────────────────┤  │ Ghostty                          │ $TERM contains ghostty        │ Kitty graphics      │  ├──────────────────────────────────┼───────────────────────────────┼─────────────────────┤  │ iTerm2                           │ $TERM_PROGRAM=iTerm.app       │ iTerm2 inline image │  ├──────────────────────────────────┼───────────────────────────────┼─────────────────────┤  │ WezTerm                          │ $TERM_PROGRAM=WezTerm         │ iTerm2 inline image │  ├──────────────────────────────────┼───────────────────────────────┼─────────────────────┤  │ mintty (Cygwin/MSYS2 on Windows) │ $TERM_PROGRAM contains mintty │ iTerm2 inline image │  ├──────────────────────────────────┼───────────────────────────────┼─────────────────────┤  │ Rio                              │ $TERM_PROGRAM contains rio    │ iTerm2 inline image │  ├──────────────────────────────────┼───────────────────────────────┼─────────────────────┤  │ Warp                             │ $TERM_PROGRAM=WarpTerminal    │ iTerm2 inline image │  └──────────────────────────────────┴───────────────────────────────┴─────────────────────┘
+```
+```
+  cargo run -- 300                                    # text mode (default)  cargo run -- 300 --mode auto                        # render the GIF — should pick Kitty graphics  cargo run -- 300 --mode auto --debug-protocol       # confirms 'detected: kitty' on stderr  cargo run -- 300 --no-color                         # plain mono  cargo run -- 200 --mode auto                        # has double-height; also good for image diff  cargo run --release -- 300 --mode auto              # optimized build (avoids debug-mode slowness)
+```
+
 ## How it works
 
-`texttv` is text-first. By default it pulls the page from the
+`texttv` is teletext-first. By default it pulls the page from the
 [`api.texttv.nu`](https://texttv.nu) JSON feed, which exposes per-cell
 color attributes — the only public source faithful enough to reconstruct
 teletext color and double-height. SVT's own HTML strips those attributes,
@@ -36,10 +44,10 @@ Requires Rust 1.85+ (edition 2024).
 
 | Flag                                    | Meaning                                                                         |
 | --------------------------------------- | ------------------------------------------------------------------------------- |
-| `--mode {text,auto,kitty,iterm,blocks}` | Pick the rendering path. Defaults to `text`.                                    |
+| `--mode {teletext,auto,kitty,iterm,blocks}` | Pick the rendering path. Defaults to `teletext`.                            |
 | `--no-color`                            | Strip ANSI color and double-height escapes; plain mono.                         |
 | `--list`                                | Print the section index and exit.                                               |
-| `--source {svt,texttv-nu}`              | Override the data source. Default: `texttv-nu` for text, `svt` for image modes. |
+| `--source {svt,texttv-nu}`              | Override the data source. Default: `texttv-nu` for teletext mode, `svt` for image modes. |
 | `--debug-protocol`                      | Print the detected graphics protocol on stderr before drawing.                  |
 | `--help`, `--version`                   | Standard.                                                                       |
 
@@ -93,15 +101,16 @@ through tmux without extra configuration.
 
 ## Auto-degrade
 
-`texttv` strips ANSI escapes and double-height codes automatically when
+`texttv` strips ANSI escapes, the right-edge frame, and double-height
+codes automatically when
 stdout is piped or redirected, so `texttv 300 | grep` and
 `texttv 300 > /tmp/page.txt` produce clean text. `NO_COLOR=1` and
 `--no-color` do the same explicitly. To keep color through a pager,
 use `texttv 300 | less -R`.
 
-For image rendering, `--mode auto` piped degrades to text; the forced
-graphics modes (`--mode kitty/iterm/blocks`) still emit escape sequences,
-because that's what you asked for.
+For image rendering, `--mode auto` piped degrades to teletext mode; the
+forced graphics modes (`--mode kitty/iterm/blocks`) still emit escape
+sequences, because that's what you asked for.
 
 ## Exit codes
 

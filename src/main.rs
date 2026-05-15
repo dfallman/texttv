@@ -58,19 +58,19 @@ fn run(args: Args) -> Result<(), AppError> {
 
     // --mode auto on a piped stdout dumps escape codes, so degrade to text.
     let effective_mode = if piped && matches!(args.mode, Mode::Auto) {
-        Mode::Text
+        Mode::Teletext
     } else {
         args.mode
     };
 
     // Source defaults: texttv.nu for the rich text render, svt.se for the GIF.
     let source = args.source.unwrap_or(match effective_mode {
-        Mode::Text => Source::TexttvNu,
+        Mode::Teletext => Source::TexttvNu,
         _ => Source::Svt,
     });
 
     match (effective_mode, source) {
-        (Mode::Text, Source::TexttvNu) => {
+        (Mode::Teletext, Source::TexttvNu) => {
             let json = fetch::fetch_texttv_nu(page).map_err(AppError::Runtime)?;
             let cp = parse_texttv_nu(&json, page).map_err(AppError::Runtime)?;
             let mut out = std::io::stdout().lock();
@@ -83,7 +83,7 @@ fn run(args: Args) -> Result<(), AppError> {
                     .map_err(AppError::Runtime)?;
             }
         }
-        (Mode::Text, Source::Svt) => {
+        (Mode::Teletext, Source::Svt) => {
             let html = fetch::fetch_html(page).map_err(AppError::Runtime)?;
             let page_data = extract_page(&html, page).map_err(AppError::Runtime)?;
             let mut out = std::io::stdout().lock();
