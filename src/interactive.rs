@@ -678,13 +678,22 @@ pub fn draw<W: Write>(state: &State, out: &mut W) -> anyhow::Result<()> {
         .to_string();
     out.queue(Print(styled))?;
 
-    // Hint at row `PAGE_HEIGHT_MAX` (just below the page area), centered
-    // within `CHROME_WIDTH`. Three cases:
+    // Hint bar — pinned just below the last rendered page row so there's
+    // no leftover black gap between content and toolbar for pages
+    // shorter than `PAGE_HEIGHT_MAX`. During the initial-load state
+    // (no lines yet) we keep it at the bottom so the loading screen
+    // looks the way it always has.
+    // Content cases:
     //   1. Status message present → show it (priority).
     //   2. Multi-page → subpage selector "Page: >1< 2 3 4 …" with the
     //      selected indicator inverted inline.
-    //   3. Otherwise → the static "↑↓ ←→ · Enter · Esc quit" hint.
-    out.queue(MoveTo(0, PAGE_HEIGHT_MAX))?;
+    //   3. Otherwise → the static "↑↓ ←→ · Enter · q/Esc quit" hint.
+    let hint_row = if state.lines.is_empty() {
+        PAGE_HEIGHT_MAX
+    } else {
+        state.lines.len() as u16
+    };
+    out.queue(MoveTo(0, hint_row))?;
     let hint_styled = if let Some(status) = state.status.as_deref() {
         let centered = center_padded(status, CHROME_WIDTH);
         centered
@@ -699,9 +708,9 @@ pub fn draw<W: Write>(state: &State, out: &mut W) -> anyhow::Result<()> {
             .map(|l| l.target as usize);
         compose_subpage_hint(state.subpage_idx, state.subpages.len(), selected_subpage)
     } else {
-        let centered = center_padded("↑↓ ←→ · Enter · q/Esc quit", CHROME_WIDTH);
+        let centered = center_padded("↑↓ · ←→ · Enter · Esc", CHROME_WIDTH);
         centered
-            .truecolor(255, 255, 255)
+            .truecolor(127, 127, 127)
             .on_truecolor(0, 0, 0)
             .to_string()
     };
