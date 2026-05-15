@@ -1,19 +1,23 @@
 # texttv
 
-A small and fast, yet decisively over-engineered command-line reader for 
+A small and fast, yet decisively over-engineered command-line parser and reader for 
 [SVT Text-TV](https://www.svt.se/text-tv/) — Sweden's public-service teletext. 
-Still going strong since 1979, it's an _excellent_ source of news.
+While 1979 _is_ calling, it's still a properly excellent source of news. Now available
+in a terminal near you.
 
 ## Usage
+`texttv` is simple to use out of the box and doesn't require any particular configuration
+in most terminals. simply type `textv <PAGE>` (such as `texttv 100`) to get started. 
 
 ```bash
 texttv 300              # sport
 texttv 100              # news index
 texttv 400              # weather
-texttv --list           # named sections
+texttv --list           # show some named sections
 ```
 
-`PAGE` is any integer in `100..=999`.
+`PAGE` can be any integer between `100..=999`. Note that all pages aren't available at all
+times. If you enter a page that's not avaialable, `texttv` will tell you so.
 
 ## What it shows you
 
