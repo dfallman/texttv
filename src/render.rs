@@ -61,15 +61,30 @@ pub fn render_images(images: &[DynamicImage], opts: RenderOptions) -> Result<Det
     Ok(protocol)
 }
 
+/// Target image width in terminal cells. SVT teletext is 40 cols natively;
+/// 60 leaves a little headroom for letterforms in graphics protocols while
+/// keeping the rendering compact.
+const TARGET_IMG_WIDTH: u32 = 60;
+
+fn capped_width() -> u32 {
+    let term = u32::from(terminal_cols());
+    if term == 0 {
+        TARGET_IMG_WIDTH
+    } else {
+        term.clamp(1, TARGET_IMG_WIDTH)
+    }
+}
+
 fn config_for(p: DetectedProtocol) -> viuer::Config {
     match p {
         DetectedProtocol::Kitty | DetectedProtocol::Iterm => viuer::Config {
             absolute_offset: false,
+            width: Some(capped_width()),
             ..viuer::Config::default()
         },
         DetectedProtocol::Halfblocks => viuer::Config {
             absolute_offset: false,
-            width: Some(u32::from(terminal_cols())),
+            width: Some(capped_width()),
             use_kitty: false,
             use_iterm: false,
             ..viuer::Config::default()
@@ -82,6 +97,7 @@ fn force_kitty_config() -> viuer::Config {
         absolute_offset: false,
         use_kitty: true,
         use_iterm: false,
+        width: Some(capped_width()),
         ..viuer::Config::default()
     }
 }
@@ -91,6 +107,7 @@ fn force_iterm_config() -> viuer::Config {
         absolute_offset: false,
         use_kitty: false,
         use_iterm: true,
+        width: Some(capped_width()),
         ..viuer::Config::default()
     }
 }
@@ -98,7 +115,7 @@ fn force_iterm_config() -> viuer::Config {
 fn force_blocks_config() -> viuer::Config {
     viuer::Config {
         absolute_offset: false,
-        width: Some(u32::from(terminal_cols())),
+        width: Some(capped_width()),
         use_kitty: false,
         use_iterm: false,
         ..viuer::Config::default()

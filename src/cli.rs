@@ -29,8 +29,10 @@ pub struct Args {
     #[arg(value_parser = parse_page, required_unless_present = "list")]
     pub page: Option<u16>,
 
-    /// Rendering mode.
-    #[arg(long, value_enum, default_value_t = Mode::Auto)]
+    /// Rendering mode. Defaults to text — the SVT page's screenreader text,
+    /// which is faithful to teletext layout and avoids rendering a bitmap of
+    /// text-as-image. Use --mode auto (or kitty/iterm/blocks) for the image.
+    #[arg(long, value_enum, default_value_t = Mode::Text)]
     pub mode: Mode,
 
     /// Data source.
@@ -93,7 +95,7 @@ mod tests {
     fn parses_valid_page() {
         let args = Args::try_parse_from(["texttv", "300"]).expect("should parse");
         assert_eq!(args.page, Some(300));
-        assert_eq!(args.mode, Mode::Auto);
+        assert_eq!(args.mode, Mode::Text);
     }
 
     #[test]
