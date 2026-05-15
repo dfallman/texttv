@@ -154,6 +154,25 @@ When `stdout` is piped or redirected, ANSI escapes are stripped automatically
 by teletext mode when the output isn't a TTY (you don't want raw image-
 protocol escape codes ending up in a pipe).
 
+## Interactive mode
+
+Running `texttv` with no arguments — or with `-i` / `--interactive` — opens
+an in-terminal page browser starting at page 100:
+
+- Top-left shows the current page number with a braille spinner during loads.
+- Type three digits to jump to a page; no Enter required. Out-of-range
+  pages (000–099) flash an error in the hint bar.
+- Three-digit page references on the rendered page (anything in the form
+  ` XXX ` — `100.000` is *not* a link) are scannable with ↑/↓ and openable
+  with Enter. The selected link is shown in reverse video.
+- Backspace deletes from the page-number field; Esc quits.
+
+Interactive mode always uses teletext rendering — image modes are not
+compatible with link scanning. `--mode` and `--source` flags are ignored
+(with a one-line stderr warning) if passed alongside `-i`. The terminal
+must be at least 41 columns × 27 rows. Pass an explicit page to start
+elsewhere, e.g. `texttv -i 300`.
+
 ## Config file
 
 Optional. Read from `$XDG_CONFIG_HOME/texttv/config.yaml` (defaults to
