@@ -190,20 +190,26 @@ to built-in defaults; unknown keys are an error.
 - **[`svt.se/text-tv/<PAGE>`](https://www.svt.se/text-tv/)** — the official
   page, used for the embedded GIF when an image mode is active.
 
-Decoded mosaic patterns persist to `$XDG_CACHE_HOME/texttv/mosaics/` so a
-given pattern is fetched once across all runs.
+Decoded mosaic patterns persist to the OS cache directory under
+`texttv/mosaics/` (Linux: `$XDG_CACHE_HOME/...` or `~/.cache/...`; macOS:
+`~/Library/Caches/...`; Windows: `%LOCALAPPDATA%\...`) so a given pattern is
+fetched once across all runs.
+
+This project is not affiliated with, endorsed by, or sponsored by SVT or
+texttv.nu. It's an independent reader for publicly broadcast teletext data.
+Please respect the upstream terms of service when using it — keep your
+requests reasonable, don't strip the User-Agent or the `app=` parameter, and
+don't use this tool to overload either service.
 
 ## Translation
 
-SVT Text-TV is in Swedish, somewhat obviously. A built-in translation engine is
-out of scope for this application. However, there are ways around this if you
-don't speak Swedish (and yes, learning Swedish is one too!)
+Obvious perhaps, but SVT Text-TV is in Swedish. While a built-in translation engine is
+out of scope for this application, there are ways around this if you
+don't speak Swedish but are keen to read what's happening:
 
-First of all, make sure to use the teletext mode (`--mode teletext`) which outputs
-the pages as text. You can also use `--no-color` for added clarity.
+1. Learn Swedish. It's not the easiest language to learn, to be honest, but there are many resources available.
 
-Then you can either copy and paste the outputed text into a translation engine or
-an LLM, or you can use terminal-based translation engines such as `translate-shell`.
+2. Pipe the output of `texttv` into a translation engine or LLM, or you can use terminal-based translation engines such as `translate-shell`. Just make sure to use `--mode teletext`.
 
 ```
 brew install translate-shell
@@ -221,8 +227,7 @@ Not perfect, but you'll get the gist of it.
 
 The author of this application has been writing code for over 30 years. Lately, 
 LLM agent-enhanced coding practices have rekindled my sense of awe at what's 
-possible. This project has been built using a range of tools, Claude Code 
-among them.
+possible. This project has been built using a range of tools, Anthropic's Claude Code (using Opus 4.7) are among them.
 
 Unlike some who dismiss anything touched by a coding agent as "slop," I don't 
 see it that way. To me, these tools are a way to move much faster, explore 
