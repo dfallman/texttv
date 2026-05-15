@@ -624,7 +624,12 @@ fn center_padded(text: &str, width: usize) -> String {
 fn paint_black_canvas<W: Write>(out: &mut W) -> anyhow::Result<()> {
     let row: String = " ".repeat(CHROME_WIDTH);
     let styled = row.on_truecolor(0, 0, 0).to_string();
-    for row in 0..PAGE_HEIGHT_MAX {
+    // Inclusive upper bound: also paint `PAGE_HEIGHT_MAX` so the hint
+    // row gets cleared between frames. Without this, the hint left over
+    // at row PAGE_HEIGHT_MAX from the initial-load state would still be
+    // on-screen after the page finished loading and the hint shrank
+    // upward to `state.lines.len()`.
+    for row in 0..=PAGE_HEIGHT_MAX {
         out.queue(MoveTo(0, row))?;
         out.queue(Print(&styled))?;
     }
