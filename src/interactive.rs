@@ -232,9 +232,9 @@ pub fn handle_key(state: &mut State, ev: KeyEvent) -> Action {
     let was_fetching = matches!(state.fetch, FetchState::Fetching { .. });
 
     match ev.code {
-        KeyCode::Esc => Action::Quit,
+        KeyCode::Esc | KeyCode::Char('q') => Action::Quit,
         _ if was_fetching => {
-            // While a fetch is in flight, ignore everything except Esc.
+            // While a fetch is in flight, ignore everything except Esc/q.
             Action::None
         }
         KeyCode::Char(c) if c.is_ascii_digit() => {
@@ -665,7 +665,7 @@ pub fn draw<W: Write>(state: &State, out: &mut W) -> anyhow::Result<()> {
             .map(|l| l.target as usize);
         compose_subpage_hint(state.subpage_idx, state.subpages.len(), selected_subpage)
     } else {
-        let centered = center_padded("↑↓ ←→ · Enter · Esc quit", CHROME_WIDTH);
+        let centered = center_padded("↑↓ ←→ · Enter · q/Esc quit", CHROME_WIDTH);
         centered
             .truecolor(255, 255, 255)
             .on_truecolor(0, 0, 0)
@@ -1227,6 +1227,22 @@ mod tests {
     fn esc_emits_quit() {
         let mut s = State::initial(100);
         assert_eq!(handle_key(&mut s, key(KeyCode::Esc)), Action::Quit);
+    }
+
+    #[test]
+    fn q_emits_quit() {
+        let mut s = State::initial(100);
+        assert_eq!(handle_key(&mut s, key(KeyCode::Char('q'))), Action::Quit);
+    }
+
+    #[test]
+    fn q_quits_even_during_fetch() {
+        let mut s = State::initial(100);
+        s.fetch = FetchState::Fetching {
+            target_page: 200,
+            frame: 0,
+        };
+        assert_eq!(handle_key(&mut s, key(KeyCode::Char('q'))), Action::Quit);
     }
 
     #[test]
