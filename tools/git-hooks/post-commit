@@ -27,11 +27,15 @@ if [ ! -f Cargo.toml ] || ! grep -q '^name = "texttv"' Cargo.toml; then
     exit 0
 fi
 
-MSG=$(git log -1 --pretty=%B)
+# Only the subject line is checked for the bump marker — otherwise the hook
+# would fire on commits that merely *mention* ^MAJOR / ^MINOR in their body
+# (e.g. this very hook's own commit, when the explanation text contained
+# both markers as examples).
+SUBJECT=$(git log -1 --pretty=%s)
 
-if printf '%s' "$MSG" | grep -qE '\^MAJOR'; then
+if printf '%s' "$SUBJECT" | grep -qE '\^MAJOR'; then
     KIND=major
-elif printf '%s' "$MSG" | grep -qE '\^MINOR'; then
+elif printf '%s' "$SUBJECT" | grep -qE '\^MINOR'; then
     KIND=minor
 else
     KIND=patch
