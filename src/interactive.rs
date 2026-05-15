@@ -481,12 +481,15 @@ const LINK_FG: (u8, u8, u8) = (255, 255, 255);
 const LINK_BG: (u8, u8, u8) = (0xe8, 0x32, 0xff);
 
 /// Compose the input-row content. The leading cell is the spinner while
-/// fetching and a triangle pointer (`⏵`) otherwise:
+/// fetching and a triangle pointer (`⏵`) otherwise. Trailing spaces
+/// extend the overlay past the page's own page-number + multi-page
+/// indicator area so we don't leak `>N<`-style suffixes between our
+/// digits and SVT's section-name header:
 ///
 /// ```text
-///   col: 0 1 2 3 4
-///        ⠏ _ 1 0 0    (fetching)
-///        ⏵ _ 1 0 0    (idle)
+///   col: 0 1 2 3 4 5 6
+///        ⠏ _ 1 0 0 _ _    (fetching)
+///        ⏵ _ 1 0 0 _ _    (idle)
 /// ```
 fn input_row(state: &State) -> String {
     let glyph = match state.fetch {
@@ -502,7 +505,10 @@ fn input_row(state: &State) -> String {
         }
         s
     };
-    format!("{glyph} {digits}")
+    // 7 cells: glyph + space + 3 digits + 2 trailing spaces of padding.
+    // The trailing pad clears the page-header zone where SVT renders the
+    // subpage indicator (`2` in a header like `102  2 SVT Text …`).
+    format!("{glyph} {digits}  ")
 }
 
 /// Compose the multi-page subpage selector "Page: >1< 2 3 4 …", centered
@@ -643,7 +649,7 @@ pub fn draw<W: Write>(state: &State, out: &mut W) -> anyhow::Result<()> {
     //   1. Status message present → show it (priority).
     //   2. Multi-page → subpage selector "Page: >1< 2 3 4 …" with the
     //      selected indicator inverted inline.
-    //   3. Otherwise → the static "↑↓ · Enter · Esc quit" hint.
+    //   3. Otherwise → the static "↑↓ ←→ · Enter · Esc quit" hint.
     out.queue(MoveTo(0, PAGE_HEIGHT_MAX))?;
     let hint_styled = if let Some(status) = state.status.as_deref() {
         let centered = center_padded(status, CHROME_WIDTH);
@@ -659,7 +665,7 @@ pub fn draw<W: Write>(state: &State, out: &mut W) -> anyhow::Result<()> {
             .map(|l| l.target as usize);
         compose_subpage_hint(state.subpage_idx, state.subpages.len(), selected_subpage)
     } else {
-        let centered = center_padded("↑↓ · Enter · Esc quit", CHROME_WIDTH);
+        let centered = center_padded("↑↓ ←→ · Enter · Esc quit", CHROME_WIDTH);
         centered
             .truecolor(255, 255, 255)
             .on_truecolor(0, 0, 0)
