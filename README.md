@@ -60,7 +60,15 @@ texttv 300 --mode blocks         # force the half-block fallback
 
 ## Install
 
+Make sure you have the latest version of Rust installed:
 ```bash
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+```
+
+Then clone the repo and install:
+```bash
+git clone https://github.com/dfallman/texttv
+cd texttv
 cargo install --path .
 ```
 
