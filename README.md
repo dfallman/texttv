@@ -14,10 +14,10 @@ Ghostty, etc.)
 in most terminals to get started. To use, simply type `textv <PAGE>` (such as `texttv 100`). 
 
 ```bash
-texttv 300              # sport
-texttv 100              # news index
-texttv 400              # weather
-texttv --list           # show some named sections
+texttv 100              # Front page, latest news overview
+texttv 300              # Sports news
+texttv 400              # Weather
+texttv --list           # Show some named sections
 ```
 
 `PAGE` can be any integer between `100..=999`. Note that all pages aren't available at all
