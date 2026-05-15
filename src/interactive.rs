@@ -358,6 +358,18 @@ pub fn run(initial_page: u16) -> Result<()> {
         return Err(anyhow!("--interactive requires a terminal"));
     }
 
+    // The layout needs 41 cols (40-cell page + right-edge frame) and
+    // 27 rows (input + 25 page + hint). Smaller windows would render
+    // chrome on top of the page or vice versa.
+    let (cols, rows) = crossterm::terminal::size().context("reading terminal size")?;
+    if cols < 41 || rows < 27 {
+        return Err(anyhow!(
+            "terminal too small ({cols}x{rows}); need at least 41x27"
+        ));
+    }
+
+    install_panic_hook();
+
     let mut stdout = stdout();
     enable_raw_mode().context("entering raw mode")?;
     execute!(stdout, EnterAlternateScreen).context("entering alt screen")?;
@@ -369,6 +381,19 @@ pub fn run(initial_page: u16) -> Result<()> {
     let _ = disable_raw_mode();
 
     result
+}
+
+/// Restore the terminal before the default panic handler runs. Without
+/// this, a panic mid-render leaves the user in a terminal with raw mode
+/// on and the alt-screen active.
+fn install_panic_hook() {
+    let original = std::panic::take_hook();
+    std::panic::set_hook(Box::new(move |info| {
+        let mut stdout = stdout();
+        let _ = execute!(stdout, LeaveAlternateScreen);
+        let _ = disable_raw_mode();
+        original(info);
+    }));
 }
 
 fn run_inner<W: Write>(initial_page: u16, out: &mut W) -> Result<()> {

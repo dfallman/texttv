@@ -71,6 +71,20 @@ fn unique_mosaic_count(cp: &texttv::parse::ColoredPage) -> usize {
     seen.len()
 }
 
+/// Warn (once each) on flags that interactive mode doesn't honor, then
+/// hand off to the interactive runtime. Stderr messages flicker briefly
+/// before the alt screen takes over but remain in the user's scrollback
+/// after Esc.
+fn enter_interactive(args: &Args, page: u16) -> Result<(), AppError> {
+    if args.mode.is_some() {
+        eprintln!("warning: --mode is ignored in interactive mode (always teletext)");
+    }
+    if args.source.is_some() {
+        eprintln!("warning: --source is ignored in interactive mode (always texttv-nu)");
+    }
+    texttv::interactive::run(page).map_err(AppError::Runtime)
+}
+
 fn run(args: Args) -> Result<(), AppError> {
     // Load ~/.config/texttv/config.yaml; broken config is non-fatal — we warn
     // and fall back to defaults, so a typo doesn't lock the user out.
@@ -106,10 +120,10 @@ fn run(args: Args) -> Result<(), AppError> {
     // Batch rendering needs an explicit PAGE.
     let page = match args.page {
         Some(p) if args.interactive => {
-            return texttv::interactive::run(p).map_err(AppError::Runtime);
+            return enter_interactive(&args, p);
         }
         None => {
-            return texttv::interactive::run(100).map_err(AppError::Runtime);
+            return enter_interactive(&args, 100);
         }
         Some(p) => p,
     };
