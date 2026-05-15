@@ -551,18 +551,19 @@ fn input_row(state: &State) -> String {
     format!("{glyph} {digits}  ")
 }
 
-/// Compose the multi-page subpage selector "Page: >1< 2 3 4 …", centered
-/// within `CHROME_WIDTH`. The whole row is white-on-black; the
-/// `>active<` brackets mark which subpage is currently rendered, and the
-/// selected indicator (if any) is overpainted with the `LINK_BG`/`LINK_FG`
-/// block matching in-page link highlights.
+/// Compose the multi-page subpage selector "Page: ⏵1 2 3 4 …", centered
+/// within `CHROME_WIDTH`. The whole row is white-on-black; the `⏵`
+/// triangle (same glyph the input field uses to mark the cursor) marks
+/// which subpage is currently rendered, and the selected indicator (if
+/// any) is overpainted with the `LINK_BG`/`LINK_FG` block matching
+/// in-page link highlights.
 fn compose_subpage_hint(active_idx: usize, total: usize, selected_idx: Option<usize>) -> String {
     // Build the plain text first to figure out the centering offset.
     let mut plain = String::from("Page: ");
     let mut labels: Vec<String> = Vec::with_capacity(total);
     for i in 0..total {
         let label = if i == active_idx {
-            format!(">{}<", i + 1)
+            format!("{INPUT_CURSOR_GLYPH}{}", i + 1)
         } else {
             format!("{}", i + 1)
         };
