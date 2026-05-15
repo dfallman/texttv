@@ -127,31 +127,16 @@ fn detect_protocol() -> DetectedProtocol {
 }
 
 /// Pick the default rendering mode for the current terminal. Terminals with
-/// high-quality native graphics protocols get `auto` (image render); the rest
-/// — including iTerm.app and every half-block-only terminal — get `teletext`.
-/// Piped/redirected stdout always defaults to teletext regardless of terminal.
+/// a native graphics protocol (Kitty or iTerm2 inline-image) get `auto` (image
+/// render); half-block-only terminals get `teletext`. Piped/redirected stdout
+/// always defaults to teletext regardless of terminal.
 pub fn default_mode_for_terminal() -> crate::cli::Mode {
     use crate::cli::Mode;
     if !stdout_is_tty() {
         return Mode::Teletext;
     }
     match detect_protocol() {
-        DetectedProtocol::Kitty => Mode::Auto,
-        DetectedProtocol::Iterm => {
-            // iTerm.app's inline-image protocol works but renders smaller and
-            // less crisply than Kitty/WezTerm's. Carve it out so iTerm users
-            // get the colored teletext reproduction by default; everyone else
-            // in the iTerm-protocol bucket (WezTerm, mintty, Rio, Warp) keeps
-            // image rendering.
-            if std::env::var("TERM_PROGRAM")
-                .ok()
-                .is_some_and(|t| t.contains("iTerm"))
-            {
-                Mode::Teletext
-            } else {
-                Mode::Auto
-            }
-        }
+        DetectedProtocol::Kitty | DetectedProtocol::Iterm => Mode::Auto,
         DetectedProtocol::Halfblocks => Mode::Teletext,
     }
 }
