@@ -11,7 +11,7 @@ pub enum Mode {
     /// Force Unicode half-block fallback.
     Blocks,
     /// The default: reconstruct the original 40-col teletext layout
-    /// with per-cell colors and DEC double-height headings.
+    /// with per-cell colors.
     Teletext,
 }
 
@@ -69,11 +69,11 @@ pub struct Args {
     #[arg(value_parser = parse_page, required_unless_present = "list")]
     pub page: Option<u16>,
 
-    /// Rendering mode. Defaults to teletext — colored, double-height-aware
-    /// 40-column reproduction of the original page. Use --mode auto (or
-    /// kitty/iterm/blocks) to render the page GIF as a bitmap instead.
-    #[arg(long, value_enum, default_value_t = Mode::Teletext)]
-    pub mode: Mode,
+    /// Rendering mode. If unset, picks `auto` on terminals with high-quality
+    /// graphics protocols (Kitty, Ghostty, WezTerm) and `teletext` everywhere
+    /// else (iTerm2, Apple Terminal, Alacritty, etc.).
+    #[arg(long, value_enum)]
+    pub mode: Option<Mode>,
 
     /// Render size for image modes. Ignored in teletext mode.
     #[arg(long, value_enum, default_value_t = Size::Medium)]
@@ -85,8 +85,7 @@ pub struct Args {
     #[arg(long, value_enum)]
     pub source: Option<Source>,
 
-    /// Strip ANSI color, the right-edge frame, and DEC double-height
-    /// escapes; produces plain mono output.
+    /// Strip ANSI color and the right-edge frame; produces plain mono output.
     #[arg(long)]
     pub no_color: bool,
 
@@ -142,7 +141,7 @@ mod tests {
     fn parses_valid_page() {
         let args = Args::try_parse_from(["texttv", "300"]).expect("should parse");
         assert_eq!(args.page, Some(300));
-        assert_eq!(args.mode, Mode::Teletext);
+        assert_eq!(args.mode, None);
     }
 
     #[test]
@@ -160,7 +159,7 @@ mod tests {
     #[test]
     fn parses_mode_flag() {
         let args = Args::try_parse_from(["texttv", "300", "--mode", "blocks"]).expect("parse");
-        assert_eq!(args.mode, Mode::Blocks);
+        assert_eq!(args.mode, Some(Mode::Blocks));
     }
 
     #[test]

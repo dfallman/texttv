@@ -2,7 +2,7 @@
 
 Render [SVT Text-TV](https://www.svt.se/text-tv/) pages in your terminal,
 with full fidelity to the original 40-column teletext layout — real text,
-real colors, and double-height headers.
+real colors.
 
 ```bash
 texttv 300              # Sport
@@ -25,12 +25,22 @@ texttv --list           # Index of well-known section pages
 
 ## How it works
 
-`texttv` is teletext-first. By default it pulls the page from the
-[`api.texttv.nu`](https://texttv.nu) JSON feed, which exposes per-cell
-color attributes — the only public source faithful enough to reconstruct
-teletext color and double-height. SVT's own HTML strips those attributes,
-so it's used only for the bitmap render path (`--mode auto/kitty/iterm/blocks`),
-which displays the original GIF SVT embeds.
+`texttv` picks a sensible default mode based on your terminal:
+
+- **Native graphics terminals** (Kitty, Ghostty, WezTerm) → image render
+  via their native protocol. The GIF SVT embeds is fetched from
+  `svt.se/text-tv/<PAGE>` and drawn at natural pixel size.
+- **Everything else** (iTerm2, Apple Terminal, Alacritty, Windows Terminal,
+  foot, mlterm, …) → colored teletext reproduction. Data comes from the
+  [`api.texttv.nu`](https://texttv.nu) JSON feed, which exposes per-cell
+  color attributes that the official SVT site strips. We use ANSI truecolor
+  for the 8 teletext primaries.
+
+iTerm2 falls into the teletext-default bucket even though it supports its
+own inline-image protocol — the teletext reproduction reads better there.
+Explicit `--mode auto` still works in iTerm2 if you want the bitmap.
+
+Pass `--mode {teletext,auto,kitty,iterm,blocks}` to override.
 
 ## Install
 
@@ -44,9 +54,9 @@ Requires Rust 1.85+ (edition 2024).
 
 | Flag                                    | Meaning                                                                         |
 | --------------------------------------- | ------------------------------------------------------------------------------- |
-| `--mode {teletext,auto,kitty,iterm,blocks}` | Pick the rendering path. Defaults to `teletext`.                            |
+| `--mode {teletext,auto,kitty,iterm,blocks}` | Pick the rendering path. If unset, picks `auto` on Kitty / Ghostty / WezTerm and `teletext` everywhere else. |
 | `--size {tiny,small,medium,large,xl,full}` | Render size for image modes. Default `medium`. Ignored in teletext mode.     |
-| `--no-color`                            | Strip ANSI color and double-height escapes; plain mono.                         |
+| `--no-color`                            | Strip ANSI color and the right-edge frame; plain mono.                          |
 | `--list`                                | Print the section index and exit.                                               |
 | `--source {svt,texttv-nu}`              | Override the data source. Default: `texttv-nu` for teletext mode, `svt` for image modes. |
 | `--debug-protocol`                      | Print the detected graphics protocol on stderr before drawing.                  |
@@ -57,9 +67,12 @@ Requires Rust 1.85+ (edition 2024).
 - **Colors** — the 8 teletext primaries (black, red, green, yellow, blue,
   magenta, cyan, white) emitted as ANSI truecolor escapes via
   [`owo-colors`](https://crates.io/crates/owo-colors).
-- **Double-height** — lines tagged `DH` render via the DEC private escapes
-  `ESC # 3` (top half) / `ESC # 4` (bottom half). Supported by Kitty,
-  Ghostty, WezTerm, iTerm2, xterm, and most VT-compatible terminals.
+- **Double-height** — the parser still detects `DH` (double-height) lines,
+  but the renderer emits them at single height. DEC's `ESC#3`/`ESC#4`
+  escapes work on most terminals but not all; when they don't, the line
+  shows up duplicated, which is worse than the lost visual effect. The
+  `Line.double_height` flag is preserved in case we add a different
+  presentation (bold, underline, …) in the future.
 - **Mosaic graphics** — teletext mosaic block characters (small icons and
   borders) currently render as colored spaces. Layout is preserved; the
   block pattern is dropped. Mapping the mosaic GIFs to Unicode block
@@ -108,13 +121,11 @@ set -g default-terminal "tmux-256color"
 
 If `--debug-protocol` reports `halfblocks` inside tmux but your outer
 terminal is Kitty/Ghostty/WezTerm/iTerm2, this is almost always the cause.
-The default text mode is unaffected — DEC double-height escapes pass
-through tmux without extra configuration.
+The default teletext mode is unaffected by tmux.
 
 ## Auto-degrade
 
-`texttv` strips ANSI escapes, the right-edge frame, and double-height
-codes automatically when
+`texttv` strips ANSI escapes and the right-edge frame automatically when
 stdout is piped or redirected, so `texttv 300 | grep` and
 `texttv 300 > /tmp/page.txt` produce clean text. `NO_COLOR=1` and
 `--no-color` do the same explicitly. To keep color through a pager,

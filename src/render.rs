@@ -126,6 +126,36 @@ fn detect_protocol() -> DetectedProtocol {
     }
 }
 
+/// Pick the default rendering mode for the current terminal. Terminals with
+/// high-quality native graphics protocols get `auto` (image render); the rest
+/// — including iTerm.app and every half-block-only terminal — get `teletext`.
+/// Piped/redirected stdout always defaults to teletext regardless of terminal.
+pub fn default_mode_for_terminal() -> crate::cli::Mode {
+    use crate::cli::Mode;
+    if !stdout_is_tty() {
+        return Mode::Teletext;
+    }
+    match detect_protocol() {
+        DetectedProtocol::Kitty => Mode::Auto,
+        DetectedProtocol::Iterm => {
+            // iTerm.app's inline-image protocol works but renders smaller and
+            // less crisply than Kitty/WezTerm's. Carve it out so iTerm users
+            // get the colored teletext reproduction by default; everyone else
+            // in the iTerm-protocol bucket (WezTerm, mintty, Rio, Warp) keeps
+            // image rendering.
+            if std::env::var("TERM_PROGRAM")
+                .ok()
+                .is_some_and(|t| t.contains("iTerm"))
+            {
+                Mode::Teletext
+            } else {
+                Mode::Auto
+            }
+        }
+        DetectedProtocol::Halfblocks => Mode::Teletext,
+    }
+}
+
 fn terminal_cols() -> u16 {
     let (cols, _rows) = viuer::terminal_size();
     if cols == 0 {
@@ -143,29 +173,21 @@ pub fn render_text(text: &str, out: &mut dyn Write) -> Result<()> {
     Ok(())
 }
 
-/// Render the colored, optionally double-height teletext line stream.
+/// Render the colored teletext line stream.
 ///
-/// `color` enables ANSI truecolor escapes. `double_height` enables DEC private
-/// escapes (`ESC # 3` top half, `ESC # 4` bottom half) for lines marked DH. The
-/// two flags travel together when the caller wants a "plain" render — see
-/// main.rs.
+/// `color` enables ANSI truecolor escapes. Each line is emitted exactly once;
+/// the parsed `Line.double_height` flag is currently informational. (Earlier
+/// versions emitted DEC `ESC#3`/`ESC#4` pairs for DH lines, but DECDHL
+/// support is patchy across terminals — when it's not honored, the pair
+/// shows up as visible duplicates. Better to lose the visual tall-text
+/// effect than to ship duplicates.)
 pub fn render_colored(
     lines: &[crate::parse::Line],
     color: bool,
-    double_height: bool,
     out: &mut dyn Write,
 ) -> Result<()> {
     for line in lines {
-        if double_height && line.double_height {
-            // DEC double-height: the same character row is emitted twice, once
-            // with ESC#3 (top half), once with ESC#4 (bottom half). Conforming
-            // terminals (Kitty, Ghostty, WezTerm, iTerm2, xterm) render the
-            // pair as a single visually-tall row.
-            write_line(line, color, "\x1b#3", out)?;
-            write_line(line, color, "\x1b#4", out)?;
-        } else {
-            write_line(line, color, "", out)?;
-        }
+        write_line(line, color, "", out)?;
     }
     Ok(())
 }

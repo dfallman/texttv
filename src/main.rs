@@ -56,11 +56,16 @@ fn run(args: Args) -> Result<(), AppError> {
     // working as plain text.
     let no_color = args.no_color || std::env::var_os("NO_COLOR").is_some() || piped;
 
+    // Resolve --mode: explicit user value wins; otherwise pick a default based
+    // on the detected terminal.
+    let resolved_mode = args
+        .mode
+        .unwrap_or_else(texttv::render::default_mode_for_terminal);
     // --mode auto on a piped stdout dumps escape codes, so degrade to text.
-    let effective_mode = if piped && matches!(args.mode, Mode::Auto) {
+    let effective_mode = if piped && matches!(resolved_mode, Mode::Auto) {
         Mode::Teletext
     } else {
-        args.mode
+        resolved_mode
     };
 
     // Source defaults: texttv.nu for the rich text render, svt.se for the GIF.
@@ -79,8 +84,7 @@ fn run(args: Args) -> Result<(), AppError> {
                 // would render visually large even without color).
                 render_text(&cp.plain, &mut out).map_err(AppError::Runtime)?;
             } else {
-                render_colored(&cp.lines, true, true, &mut out)
-                    .map_err(AppError::Runtime)?;
+                render_colored(&cp.lines, true, &mut out).map_err(AppError::Runtime)?;
             }
         }
         (Mode::Teletext, Source::Svt) => {
