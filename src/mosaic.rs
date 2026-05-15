@@ -10,6 +10,7 @@
 
 use anyhow::{Context, Result, anyhow};
 use std::collections::HashMap;
+use std::path::PathBuf;
 use std::sync::{Mutex, OnceLock};
 use std::time::Duration;
 
@@ -46,11 +47,23 @@ fn cache() -> &'static Mutex<HashMap<String, u8>> {
 }
 
 /// Resolve a mosaic URL to its 6-bit pattern, fetching + decoding once and
-/// caching for the rest of the process.
+/// caching for the rest of the process. Three-tier lookup:
+///
+/// 1. Process-memory cache (fastest).
+/// 2. On-disk cache under `$XDG_CACHE_HOME/texttv/mosaics/<hash>.pat`.
+///    Patterns are stable across runs because the GIF hash is content-addressed:
+///    same hash → same image bytes → same pattern, forever.
+/// 3. Network fetch + decode + write through both caches.
 pub fn resolve_pattern(url: &str, fg: TtColor, bg: TtColor) -> Result<u8> {
     if let Ok(guard) = cache().lock()
         && let Some(p) = guard.get(url).copied()
     {
+        return Ok(p);
+    }
+    if let Some(p) = read_disk_cache(url) {
+        if let Ok(mut guard) = cache().lock() {
+            guard.insert(url.to_string(), p);
+        }
         return Ok(p);
     }
     let bytes = fetch(url)?;
@@ -58,7 +71,52 @@ pub fn resolve_pattern(url: &str, fg: TtColor, bg: TtColor) -> Result<u8> {
     if let Ok(mut guard) = cache().lock() {
         guard.insert(url.to_string(), pattern);
     }
+    write_disk_cache(url, pattern);
     Ok(pattern)
+}
+
+fn cache_dir() -> Option<PathBuf> {
+    let base = std::env::var_os("XDG_CACHE_HOME")
+        .map(PathBuf::from)
+        .or_else(|| std::env::var_os("HOME").map(|h| PathBuf::from(h).join(".cache")))?;
+    Some(base.join("texttv").join("mosaics"))
+}
+
+/// File name = the bare GIF hash from the URL (the digits before `.gif`).
+/// Falling back to a stable hash of the whole URL means an off-spec URL still
+/// caches, just under a less-recognisable name.
+fn cache_key(url: &str) -> String {
+    if let Some(name) = url.rsplit('/').next()
+        && let Some(stem) = name.strip_suffix(".gif")
+        && stem.chars().all(|c| c.is_ascii_digit())
+    {
+        return stem.to_string();
+    }
+    // Fallback: hash the URL deterministically.
+    use std::hash::{BuildHasher, Hasher};
+    let mut h = std::collections::hash_map::RandomState::new().build_hasher();
+    h.write(url.as_bytes());
+    format!("u{:016x}", h.finish())
+}
+
+fn read_disk_cache(url: &str) -> Option<u8> {
+    let path = cache_dir()?.join(format!("{}.pat", cache_key(url)));
+    let bytes = std::fs::read(&path).ok()?;
+    // File holds exactly one byte: the 6-bit pattern (high two bits ignored).
+    bytes.first().copied().map(|b| b & 0b00111111)
+}
+
+fn write_disk_cache(url: &str, pattern: u8) {
+    let Some(dir) = cache_dir() else { return };
+    if std::fs::create_dir_all(&dir).is_err() {
+        return;
+    }
+    let path = dir.join(format!("{}.pat", cache_key(url)));
+    // Write atomically via tmp+rename so concurrent writers don't tear.
+    let tmp = path.with_extension("pat.tmp");
+    if std::fs::write(&tmp, [pattern]).is_ok() {
+        let _ = std::fs::rename(&tmp, &path);
+    }
 }
 
 /// Pre-fetch every unique mosaic URL in the page in parallel so the render
@@ -72,7 +130,6 @@ pub fn prefetch_page(page: &ColoredPage) {
             if let Some(url) = cell.mosaic_url.as_deref()
                 && !seen.contains_key(url)
             {
-                // Skip URLs already cached from a previous render.
                 if let Ok(guard) = cache().lock()
                     && guard.contains_key(url)
                 {
@@ -96,16 +153,23 @@ pub fn prefetch_page(page: &ColoredPage) {
 }
 
 fn fetch(url: &str) -> Result<Vec<u8>> {
+    let t0 = std::time::Instant::now();
     let resp = agent()
         .get(url)
         .call()
         .with_context(|| format!("GET {url}"))?;
+    let t_resp = t0.elapsed().as_millis();
     let mut buf = Vec::new();
     use std::io::Read;
     resp.into_reader()
         .take(64 * 1024)
         .read_to_end(&mut buf)
         .with_context(|| format!("reading {url}"))?;
+    let t_total = t0.elapsed().as_millis();
+    if crate::timing::enabled() {
+        let short = url.rsplit('/').next().unwrap_or(url);
+        eprintln!("[texttv]   fetch {short}: resp={t_resp}ms total={t_total}ms");
+    }
     Ok(buf)
 }
 

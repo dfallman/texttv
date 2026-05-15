@@ -77,8 +77,9 @@ Requires Rust 1.85+ (edition 2024).
   logo, sport icons, weather symbols, navigation borders) are fetched on
   first encounter from texttv.nu, decoded, and mapped to Unicode
   *sextant* characters in the "Symbols for Legacy Computing" block
-  (U+1FB00–U+1FB3B). Falls back to colored spaces if a fetch fails. The
-  per-process cache means each unique mosaic is fetched once per run.
+  (U+1FB00–U+1FB3B). Falls back to colored spaces if a fetch fails.
+  Decoded patterns persist to `$XDG_CACHE_HOME/texttv/mosaics/` so a
+  given mosaic hash is only ever decoded once across all runs.
 
 ## Image mode
 
