@@ -210,7 +210,7 @@ pub fn render_colored(
 
 fn is_blank_line(line: &crate::parse::Line) -> bool {
     line.cells.iter().all(|c| {
-        !c.mosaic && c.text.chars().all(char::is_whitespace)
+        !c.is_mosaic() && c.text.chars().all(char::is_whitespace)
     })
 }
 
@@ -247,10 +247,14 @@ fn write_line(
         out.write_all(prefix.as_bytes())?;
     }
     for cell in &line.cells {
-        let render_text: String = if cell.mosaic {
-            // Replace mosaic placeholder with a space of equal width; we lose the
-            // block pattern but keep the background fill so layout survives.
-            " ".repeat(cell.text.chars().count().max(1))
+        let render_text: String = if let Some(url) = cell.mosaic_url.as_deref() {
+            // Resolve the mosaic to a Unicode sextant (or block-special) glyph.
+            // On any failure (network down, GIF corrupt, …) fall back to a
+            // colored space so the page still renders cleanly.
+            match crate::mosaic::resolve_pattern(url, cell.fg, cell.bg) {
+                Ok(pat) => crate::mosaic::pattern_to_glyph(pat).to_string(),
+                Err(_) => " ".repeat(cell.text.chars().count().max(1)),
+            }
         } else {
             cell.text.clone()
         };

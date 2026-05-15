@@ -133,8 +133,16 @@ pub struct Cell {
     pub text: String,
     pub fg: TtColor,
     pub bg: TtColor,
-    /// True for teletext mosaic block-graphics — rendered as a colored space until we map them.
-    pub mosaic: bool,
+    /// Some(url) when this cell is a teletext mosaic block — the value is the
+    /// `https://l.texttv.nu/storage/chars/<HASH>.gif` URL pointing at the
+    /// 13×16-px GIF that encodes the 2×3 sub-cell pattern.
+    pub mosaic_url: Option<String>,
+}
+
+impl Cell {
+    pub fn is_mosaic(&self) -> bool {
+        self.mosaic_url.is_some()
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -203,7 +211,7 @@ fn dedupe_overflow(lines: Vec<Line>) -> Vec<Line> {
 fn has_text_content(line: &Line) -> bool {
     line.cells
         .iter()
-        .any(|c| !c.mosaic && c.text.chars().any(|ch| !ch.is_whitespace()))
+        .any(|c| !c.is_mosaic() && c.text.chars().any(|ch| !ch.is_whitespace()))
 }
 
 fn lines_equivalent(a: &Line, b: &Line) -> bool {
@@ -211,7 +219,10 @@ fn lines_equivalent(a: &Line, b: &Line) -> bool {
         return false;
     }
     a.cells.iter().zip(&b.cells).all(|(x, y)| {
-        x.text == y.text && x.fg == y.fg && x.bg == y.bg && x.mosaic == y.mosaic
+        x.text == y.text
+            && x.fg == y.fg
+            && x.bg == y.bg
+            && x.mosaic_url == y.mosaic_url
     })
 }
 
@@ -240,11 +251,17 @@ fn parse_colored_html(html: &str) -> Vec<Line> {
         let mut cells: Vec<Cell> = Vec::new();
         for cell_el in line_el.select(&span_sel) {
             let cls = cell_el.value().attr("class").unwrap_or("");
-            let (fg, bg, mosaic) = parse_cell_classes(cls);
+            let style = cell_el.value().attr("style").unwrap_or("");
+            let (fg, bg, mosaic_flag) = parse_cell_classes(cls);
+            let mosaic_url = if mosaic_flag {
+                extract_url_from_style(style)
+            } else {
+                None
+            };
             let text: String = cell_el.text().collect();
             // Mosaic spans have no inner text — preserve a single-space placeholder
             // so the line keeps its width.
-            let text = if mosaic && text.is_empty() {
+            let text = if mosaic_flag && text.is_empty() {
                 " ".to_string()
             } else {
                 text
@@ -252,11 +269,14 @@ fn parse_colored_html(html: &str) -> Vec<Line> {
             if text.is_empty() {
                 continue;
             }
-            // Merge consecutive cells with identical attributes to keep escapes minimal.
-            if let Some(last) = cells.last_mut()
+            // Merge consecutive cells with identical attributes to keep escapes
+            // minimal. Mosaic cells never merge — each has its own URL.
+            let mergeable = mosaic_url.is_none();
+            if mergeable
+                && let Some(last) = cells.last_mut()
                 && last.fg == fg
                 && last.bg == bg
-                && last.mosaic == mosaic
+                && last.mosaic_url.is_none()
             {
                 last.text.push_str(&text);
             } else {
@@ -264,7 +284,7 @@ fn parse_colored_html(html: &str) -> Vec<Line> {
                     text,
                     fg,
                     bg,
-                    mosaic,
+                    mosaic_url,
                 });
             }
         }
@@ -276,6 +296,13 @@ fn parse_colored_html(html: &str) -> Vec<Line> {
         }
     }
     lines
+}
+
+fn extract_url_from_style(style: &str) -> Option<String> {
+    let start = style.find("url(")? + 4;
+    let rest = &style[start..];
+    let end = rest.find(')')?;
+    Some(rest[..end].trim().trim_matches(['"', '\'']).to_string())
 }
 
 fn parse_cell_classes(class_attr: &str) -> (TtColor, TtColor, bool) {

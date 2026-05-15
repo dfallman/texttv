@@ -73,10 +73,12 @@ Requires Rust 1.85+ (edition 2024).
   shows up duplicated, which is worse than the lost visual effect. The
   `Line.double_height` flag is preserved in case we add a different
   presentation (bold, underline, …) in the future.
-- **Mosaic graphics** — teletext mosaic block characters (small icons and
-  borders) currently render as colored spaces. Layout is preserved; the
-  block pattern is dropped. Mapping the mosaic GIFs to Unicode block
-  characters is on the roadmap.
+- **Mosaic graphics** — the 2×3 sub-cell mosaic block characters (SVT
+  logo, sport icons, weather symbols, navigation borders) are fetched on
+  first encounter from texttv.nu, decoded, and mapped to Unicode
+  *sextant* characters in the "Symbols for Legacy Computing" block
+  (U+1FB00–U+1FB3B). Falls back to colored spaces if a fetch fails. The
+  per-process cache means each unique mosaic is fetched once per run.
 
 ## Image mode
 
