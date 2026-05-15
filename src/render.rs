@@ -176,11 +176,11 @@ pub fn render_text(text: &str, out: &mut dyn Write) -> Result<()> {
 /// Render the colored teletext line stream.
 ///
 /// `color` enables ANSI truecolor escapes. Each line is emitted exactly once.
-/// DECDHL escapes turned out unreliable across terminals; instead, lines
-/// flagged `double_height` get a thick colored bar drawn on the always-blank
-/// row directly below them, in the cell's fg color. The bar is `▀` (upper
-/// half block) repeated to match each cell's width, so the colors of a
-/// multi-color heading carry through into the underline.
+/// Lines flagged `double_height` in the source are rendered as bold single-
+/// height — DECDHL was unreliable, the inline colored-bar approximation got
+/// busy, and bold is the lowest-friction signal that still distinguishes a
+/// heading. The always-blank row that texttv.nu pads with after a DH line
+/// (the bottom half of the would-be tall character) is swallowed.
 pub fn render_colored(
     lines: &[crate::parse::Line],
     color: bool,
@@ -190,74 +190,22 @@ pub fn render_colored(
     while i < lines.len() {
         let line = &lines[i];
         write_line(line, color, "", out)?;
-
-        // For a DH line, replace the following blank row with a colored bar
-        // — but only when color is on. The no-color path stays as flat text.
-        if color
-            && line.double_height
-            && lines
-                .get(i + 1)
-                .is_some_and(is_blank_line)
-        {
-            write_dh_underline(line, out)?;
+        if line.double_height && lines.get(i + 1).is_some_and(is_blank_line) {
+            // Skip the next-row blank padding so the page stays the original
+            // teletext row count rather than picking up an extra empty row
+            // beneath every heading.
             i += 2;
-            continue;
+        } else {
+            i += 1;
         }
-        i += 1;
     }
     Ok(())
 }
 
 fn is_blank_line(line: &crate::parse::Line) -> bool {
-    line.cells.iter().all(|c| {
-        !c.is_mosaic() && c.text.chars().all(char::is_whitespace)
-    })
-}
-
-fn write_dh_underline(dh_line: &crate::parse::Line, out: &mut dyn Write) -> Result<()> {
-    use owo_colors::OwoColorize;
-
-    // Use the heading's actual text color for the whole bar so leading-
-    // whitespace cells don't render in their default fg (typically white)
-    // against a coloured headline.
-    let bar_fg = dh_line
-        .cells
+    line.cells
         .iter()
-        .find(|c| c.text.chars().any(|ch| !ch.is_whitespace()))
-        .map(|c| c.fg)
-        .unwrap_or(crate::parse::TtColor::White);
-
-    let mut first = true;
-    for cell in &dh_line.cells {
-        let width = cell.text.chars().count();
-        if width == 0 {
-            continue;
-        }
-        // U+1FB0B SEXTANT-34 — a thin horizontal stroke in the middle of the
-        // cell. The very first column of the row is the page's always-black
-        // left frame; emit a space there and bars from column 2 on.
-        let bar: String = if first {
-            let mut s = String::with_capacity(width * 4);
-            s.push(' ');
-            for _ in 1..width {
-                s.push('\u{1FB0B}');
-            }
-            s
-        } else {
-            "\u{1FB0B}".repeat(width)
-        };
-        first = false;
-        let (fr, fg_g, fb) = bar_fg.rgb();
-        let (br, bg_g, bb) = cell.bg.rgb();
-        write!(
-            out,
-            "{}",
-            bar.truecolor(fr, fg_g, fb).on_truecolor(br, bg_g, bb)
-        )?;
-    }
-    // Right-edge frame is outside the page proper, so it stays a black cell.
-    out.write_all(b"\x1b[48;2;0;0;0m \x1b[0m\n")?;
-    Ok(())
+        .all(|c| !c.is_mosaic() && c.text.chars().all(char::is_whitespace))
 }
 
 fn write_line(
@@ -271,6 +219,7 @@ fn write_line(
     if !prefix.is_empty() {
         out.write_all(prefix.as_bytes())?;
     }
+    let bold = line.double_height;
     for cell in &line.cells {
         let render_text: String = if let Some(url) = cell.mosaic_url.as_deref() {
             // Resolve the mosaic to a Unicode sextant (or block-special) glyph.
@@ -286,13 +235,24 @@ fn write_line(
         if color {
             let (fr, fg, fb) = cell.fg.rgb();
             let (br, bg, bb) = cell.bg.rgb();
-            write!(
-                out,
-                "{}",
-                render_text
-                    .truecolor(fr, fg, fb)
-                    .on_truecolor(br, bg, bb)
-            )?;
+            if bold {
+                write!(
+                    out,
+                    "{}",
+                    render_text
+                        .truecolor(fr, fg, fb)
+                        .on_truecolor(br, bg, bb)
+                        .bold()
+                )?;
+            } else {
+                write!(
+                    out,
+                    "{}",
+                    render_text
+                        .truecolor(fr, fg, fb)
+                        .on_truecolor(br, bg, bb)
+                )?;
+            }
         } else {
             out.write_all(render_text.as_bytes())?;
         }
