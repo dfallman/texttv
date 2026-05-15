@@ -34,10 +34,6 @@ fn main() -> ExitCode {
     };
     match run(args) {
         Ok(()) => ExitCode::from(0),
-        Err(AppError::User(msg)) => {
-            print_error(&msg);
-            ExitCode::from(1)
-        }
         Err(AppError::Runtime(e)) => {
             print_error(&format!("{e:#}"));
             ExitCode::from(2)
@@ -60,7 +56,6 @@ fn print_error(msg: &str) {
 
 #[derive(Debug)]
 enum AppError {
-    User(String),
     Runtime(anyhow::Error),
 }
 
@@ -104,9 +99,20 @@ fn run(args: Args) -> Result<(), AppError> {
         return Ok(());
     }
 
-    let page = args
-        .page
-        .ok_or_else(|| AppError::User("PAGE is required".into()))?;
+    // Interactive dispatch:
+    //   - `texttv -i`             → interactive at page 100
+    //   - `texttv -i 300`         → interactive at page 300
+    //   - `texttv` (no args)      → interactive at page 100 (bare entry)
+    // Batch rendering needs an explicit PAGE.
+    let page = match args.page {
+        Some(p) if args.interactive => {
+            return texttv::interactive::run(p).map_err(AppError::Runtime);
+        }
+        None => {
+            return texttv::interactive::run(100).map_err(AppError::Runtime);
+        }
+        Some(p) => p,
+    };
 
     // Resolve --mode: CLI wins, then config, then terminal-based default.
     let resolved_mode = args
