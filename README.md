@@ -15,9 +15,11 @@ in most terminals to get started.
 
 The app has got two different modes, interactive and page view.
 
-Interactive mode opens a Tet-TV browser in the terminal and allows you to navigate the teletext pages using familiar inputs. Type the page number to go to tht page, use your arrow keys left and right to go to next/previous page, use up and down to select links on the page, and enter to select. Press `Esc` to quit.
+### Interactive mode 
+This opens a Text-TV browser in the terminal and allows you to navigate the teletext pages using familiar inputs. Type the page number to go to tht page, use your arrow keys left and right to go to next/previous page, use up and down to select links on the page, and enter to select. Press `Esc` to quit.
 
-Page view mode, on the other hand, is a truly text-based page view that displays a single page and then exits immediately. Type `texttv 360` to view page 360, for example. I wonder how those Birch Leaves are going... oh, they're not there any more?!
+### Page view mode
+This turns `texttv` into a very CLI-y, text-based mode that displays a single page and then exits immediately. Type `texttv 360` to view page 360, for example. I wonder how those Birch Leaves are going... oh, they're not there any more?!
 
 `texttv` is easy to use out of the box but also highly configurable, so the above is only the basic operation. Here are some
 examples of a few typical options (see below for details):
