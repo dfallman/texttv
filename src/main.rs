@@ -1,5 +1,5 @@
 use clap::Parser;
-use std::io::Write;
+use std::io::{IsTerminal, Write};
 use std::process::ExitCode;
 
 use texttv::cli::{Args, Mode, Size, Source, print_sections};
@@ -15,25 +15,48 @@ use texttv::render::{
 fn main() -> ExitCode {
     let args = match Args::try_parse() {
         Ok(a) => a,
-        Err(e) => {
-            let _ = e.print();
-            return match e.kind() {
-                clap::error::ErrorKind::DisplayHelp
-                | clap::error::ErrorKind::DisplayVersion => ExitCode::from(0),
-                _ => ExitCode::from(1),
-            };
-        }
+        Err(e) => match e.kind() {
+            clap::error::ErrorKind::DisplayHelp | clap::error::ErrorKind::DisplayVersion => {
+                let _ = e.print();
+                return ExitCode::from(0);
+            }
+            _ => {
+                // clap renders errors with its own lowercase "error:" prefix;
+                // strip it so we can emit the unified bold-red "Error:" prefix.
+                let rendered = e.to_string();
+                let body = rendered
+                    .strip_prefix("error: ")
+                    .or_else(|| rendered.strip_prefix("error:"))
+                    .unwrap_or(&rendered)
+                    .trim_end();
+                print_error(body);
+                return ExitCode::from(1);
+            }
+        },
     };
     match run(args) {
         Ok(()) => ExitCode::from(0),
         Err(AppError::User(msg)) => {
-            eprintln!("error: {msg}");
+            print_error(&msg);
             ExitCode::from(1)
         }
         Err(AppError::Runtime(e)) => {
-            eprintln!("error: {e:#}");
+            print_error(&format!("{e:#}"));
             ExitCode::from(2)
         }
+    }
+}
+
+/// Emit `Error: <msg>` to stderr. The label is bold red when stderr is a
+/// terminal and `NO_COLOR` is unset; otherwise plain text so pipes and CI
+/// logs stay clean.
+fn print_error(msg: &str) {
+    use owo_colors::OwoColorize;
+    let color = std::io::stderr().is_terminal() && std::env::var_os("NO_COLOR").is_none();
+    if color {
+        eprintln!("{} {msg}", "Error:".red().bold());
+    } else {
+        eprintln!("Error: {msg}");
     }
 }
 
