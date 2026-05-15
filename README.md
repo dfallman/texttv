@@ -23,7 +23,22 @@ texttv --list           # Show some named sections
 `PAGE` can be any integer between `100..=999`. Note that all pages aren't available at all
 times. If you enter a page that's not avaialable, `texttv` will tell you so.
 
-## What it shows you
+`texttv` is highly configurable, so the above is only the basic operation. Here are some
+examples of typical options (see below for details):
+
+```
+texttv 300 --mode teletext
+texttv 101 --mode iterm --size small --source svt --verbose 
+```
+
+The first example shows page 300 but overrides the default rendering mode (see below) to 
+teletext mode, which draws the page as text+ANSI.
+
+The second example enforces iTerm2's default rendering mode (image), outputs it in small
+size, enforces the source to be SVT, and shows verbose logging output in the console.
+
+
+# Rendering modes
 
 `texttv` has two different ways to render a page. The right one for your 
 terminal defaults automatically, but you can always override it. 
@@ -58,7 +73,7 @@ texttv 300 --mode iterm          # force iTerm2 inline-image protocol
 texttv 300 --mode blocks         # force the half-block fallback
 ```
 
-## Install
+# Installation
 
 Make sure you have the latest version of Rust installed:
 ```bash
@@ -72,7 +87,7 @@ cd texttv
 cargo install --path .
 ```
 
-Requires Rust 1.85+ (edition 2024).
+Requires Rust 1.85+ (edition 2024). Use [Rustup](https://rustup.rs/) rather than your package manager to install Rust, which ensures you'll get the latest version.
 
 ## Options
 
