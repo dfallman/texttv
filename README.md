@@ -34,15 +34,11 @@ Both render types have their pros and cons, pick the one you like the most:
 truecolor, bold double-height headings, Unicode sextants for the mosaic
 block-characters (the SVT logo, sport icons, weather symbols, navigation
 borders). The benefits here is that the text you see is real text: copyable, 
-grep-able, narrow. The downside is that we inevitably will lose some
-minor details, such as double-height characters that most terminal emulators
-can't render in a predictable fashion.
+grep-able, and feels right at home in the terminal. The downside is that we lose some
+minor details on the page, most notably the double-height characters that most terminal
+emulators can't render in a predictable fashion.
 
-<img width="400" alt="CleanShot 2026-05-15 at 14 19 32@2x" src="https://github.com/user-attachments/assets/d6013bf1-c339-4c46-94ad-8b2866838761" />
-Image: teletext mode rendered in iTerm2
-
-
-2. **Image mode**, on the other hand, asks your terminal to draw the original page GIF that SVT
+3. **Image mode**, on the other hand, asks your terminal to draw the original page GIF that SVT
 itself serves. Here, you'll get pixel-perfect rendering, but you lose selectable text.
 This is the default pick for terminals with a native graphics protocol (such as Kitty,
 Ghostty, WezTerm). On other terminal emulators, you can try it via `--mode auto`. On
@@ -51,9 +47,6 @@ and others) image mode falls back to a Unicode-half-block rendering, which is
 considerably worse than the teletext text path. Unless you have a very large terminal
 window, it'll look quite blurry (still pretty cool though). So for these terminals, 
 the default stays text.
-
-<img width="600" alt="CleanShot 2026-05-15 at 14 19 37@2x" src="https://github.com/user-attachments/assets/58e7e039-c788-4b57-bc96-5d38570cc892" />
-Image: Image mode rendered here in iTerm2
 
 Pick explicitly with `--mode`:
 
