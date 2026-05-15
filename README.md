@@ -19,7 +19,7 @@ texttv --list           # named sections
 
 `texttv` has two different ways to render a page. The right one for your 
 terminal defaults automatically, but you can always override it. 
-renders have their pros and cons, pick the one you like the most:
+Both render types have their pros and cons, pick the one you like the most:
 
 1. **Teletext mode** (the default and fallback option) reconstructs the original
 40-column page as real terminal text: the 8 teletext colors as ANSI
