@@ -512,8 +512,8 @@ fn input_row(state: &State) -> String {
         format!("{:03}", state.current_page)
     } else {
         let mut s = state.input_buf.clone();
-        while s.len() < 3 {
-            s.push('_');
+        while s.chars().count() < 3 {
+            s.push('·');
         }
         s
     };
@@ -1524,14 +1524,14 @@ mod tests {
     }
 
     #[test]
-    fn draw_shows_input_buf_padded_with_underscores() {
+    fn draw_shows_input_buf_padded_with_middle_dots() {
         let mut s = State::initial(100);
         s.install_page(page_with_links());
         s.input_buf = "3".to_string();
         let mut buf: Vec<u8> = Vec::new();
         draw(&s, &mut buf).expect("draw");
         let out = String::from_utf8_lossy(&buf);
-        assert!(out.contains("3__"), "padded input missing: {out:?}");
+        assert!(out.contains("3··"), "padded input missing: {out:?}");
     }
 
     #[test]
