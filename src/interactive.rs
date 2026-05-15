@@ -2,14 +2,15 @@
 //! `docs/superpowers/specs/2026-05-15-interactive-mode-design.md`.
 
 use std::io::{IsTerminal, Write, stdout};
-use std::sync::mpsc::Receiver;
+use std::sync::mpsc::{Receiver, TryRecvError, channel};
+use std::thread;
 use std::time::Duration;
 
 use anyhow::{Context, Result, anyhow};
 use crossterm::{
     QueueableCommand, execute,
     cursor::{Hide, MoveTo, Show},
-    event::{Event, KeyCode, KeyEvent, KeyEventKind, read},
+    event::{Event, KeyCode, KeyEvent, KeyEventKind, poll, read},
     style::Print,
     terminal::{
         Clear, ClearType, EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode,
@@ -22,9 +23,7 @@ use crate::parse::{ColoredPage, Line};
 pub(crate) const SPINNER: &[char] = &[
     '⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏',
 ];
-/// Event-loop poll timeout (also the spinner cadence). Used by the
-/// event loop landing in Task 10.
-#[allow(dead_code)]
+/// Event-loop poll timeout (also the spinner cadence).
 pub(crate) const SPINNER_INTERVAL: Duration = Duration::from_millis(80);
 
 /// Background-fetch state. `Idle` between loads, `Fetching` while a worker
@@ -375,46 +374,80 @@ pub fn run(initial_page: u16) -> Result<()> {
 fn run_inner<W: Write>(initial_page: u16, out: &mut W) -> Result<()> {
     let mut state = State::initial(initial_page);
 
-    // Initial load is synchronous (we don't have the spinner yet).
-    load_into_state(&mut state, initial_page);
+    // Kick off the initial load on a worker thread; the main loop polls
+    // for events on `SPINNER_INTERVAL` and animates the spinner in the
+    // meantime.
+    start_fetch(&mut state, initial_page);
     draw(&state, out)?;
 
     loop {
-        let ev = read().context("reading terminal event")?;
-        match ev {
-            Event::Key(k) if k.kind == KeyEventKind::Press => {
-                match handle_key(&mut state, k) {
-                    Action::None => {}
-                    Action::Quit => break,
-                    Action::StartFetch(page) => {
-                        load_into_state(&mut state, page);
+        drain_fetch(&mut state);
+
+        let timed_out = !poll(SPINNER_INTERVAL).context("polling for events")?;
+
+        if timed_out {
+            tick(&mut state);
+        } else {
+            match read().context("reading terminal event")? {
+                Event::Key(k) if k.kind == KeyEventKind::Press => {
+                    match handle_key(&mut state, k) {
+                        Action::None => {}
+                        Action::Quit => break,
+                        Action::StartFetch(page) => start_fetch(&mut state, page),
                     }
                 }
+                Event::Resize(_, _) => {} // just redraw below
+                _ => {}
             }
-            Event::Resize(_, _) => {} // just redraw below
-            _ => {}
         }
+
         draw(&state, out)?;
     }
     Ok(())
 }
 
-/// Synchronous fetch + parse + mosaic prefetch on the main thread. Updates
-/// `state.lines` / `state.links` / `state.selected` on success; sets a
-/// status message on failure. Replaced by an off-thread version in
-/// the next task.
-fn load_into_state(state: &mut State, page: u16) {
-    let result = crate::fetch::fetch_texttv_nu(page)
-        .and_then(|json| crate::parse::parse_texttv_nu(&json, page));
-    match result {
-        Ok(cp) => {
-            crate::mosaic::prefetch_page(&cp);
+/// Kick off a background fetch. Flips `state.fetch` to `Fetching` and
+/// returns immediately. The main loop drains `state.pending_rx` to pick
+/// up the result.
+fn start_fetch(state: &mut State, page: u16) {
+    state.fetch = FetchState::Fetching {
+        target_page: page,
+        frame: 0,
+    };
+    state.status = None;
+    let (tx, rx) = channel::<anyhow::Result<ColoredPage>>();
+    state.pending_rx = Some(rx);
+    thread::spawn(move || {
+        let result = crate::fetch::fetch_texttv_nu(page)
+            .and_then(|json| crate::parse::parse_texttv_nu(&json, page))
+            .inspect(|cp| {
+                crate::mosaic::prefetch_page(cp);
+            });
+        let _ = tx.send(result);
+    });
+}
+
+/// Drain a completed fetch result if one is waiting. Updates state in
+/// place.
+fn drain_fetch(state: &mut State) {
+    let Some(rx) = state.pending_rx.as_ref() else {
+        return;
+    };
+    match rx.try_recv() {
+        Ok(Ok(cp)) => {
             state.install_page(cp);
         }
-        Err(e) => {
+        Ok(Err(e)) => {
             state.status = Some(format!("Error: {e:#}"));
             state.input_buf.clear();
             state.fetch = FetchState::Idle;
+            state.pending_rx = None;
+        }
+        Err(TryRecvError::Empty) => {}
+        Err(TryRecvError::Disconnected) => {
+            state.status = Some("Error: load failed".into());
+            state.fetch = FetchState::Idle;
+            state.pending_rx = None;
         }
     }
 }
