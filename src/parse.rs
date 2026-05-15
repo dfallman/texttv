@@ -309,11 +309,24 @@ fn parse_colored_html(html: &str) -> Vec<Line> {
     lines
 }
 
+/// Pull the URL out of a CSS `background-image: url(...)` declaration.
+///
+/// Handles both CSS url() forms:
+/// - `url("...")` / `url('...')` — quoted; ends at the matching quote
+/// - `url(...)` — unquoted; ends at the first `)` (CSS spec disallows
+///   unescaped `)` or whitespace inside unquoted url() tokens, so the next
+///   `)` is unambiguous)
 fn extract_url_from_style(style: &str) -> Option<String> {
-    let start = style.find("url(")? + 4;
-    let rest = &style[start..];
-    let end = rest.find(')')?;
-    Some(rest[..end].trim().trim_matches(['"', '\'']).to_string())
+    let after_open = &style[style.find("url(")? + 4..];
+    let trimmed = after_open.trim_start();
+    let first = trimmed.chars().next()?;
+    if first == '"' || first == '\'' {
+        let after_quote = &trimmed[1..];
+        let close = after_quote.find(first)?;
+        return Some(after_quote[..close].to_string());
+    }
+    let end = trimmed.find(')')?;
+    Some(trimmed[..end].trim().to_string())
 }
 
 fn parse_cell_classes(class_attr: &str) -> (TtColor, TtColor, bool) {
@@ -327,10 +340,40 @@ fn parse_cell_classes(class_attr: &str) -> (TtColor, TtColor, bool) {
             bg = c;
         } else if let Some(c) = fg_from_token(tok) {
             fg = c;
+        } else if !is_known_structural_token(tok) {
+            // Under --verbose, log unfamiliar tokens once. They're harmless
+            // (we just ignore them and render with the default fg/bg), but
+            // they suggest texttv.nu's class vocabulary has shifted and the
+            // parser may need updating.
+            note_unknown_class(tok);
         }
-        // 'line', 'toprow', 'DH', 'root' fall through; handled elsewhere.
     }
     (fg, bg, mosaic)
+}
+
+/// Class tokens we know about but don't act on inside `parse_cell_classes`;
+/// they're handled by the line-level loop (`line`, `DH`) or are structural
+/// wrappers (`toprow`, `root`).
+fn is_known_structural_token(tok: &str) -> bool {
+    matches!(tok, "line" | "toprow" | "DH" | "root")
+}
+
+/// Emit a one-time `[texttv]` note for an unknown class token. De-duplicated
+/// so a class appearing in every cell logs once, not hundreds of times.
+/// No-op when `--verbose` is off.
+fn note_unknown_class(tok: &str) {
+    if !crate::timing::enabled() {
+        return;
+    }
+    use std::collections::HashSet;
+    use std::sync::{Mutex, OnceLock};
+    static SEEN: OnceLock<Mutex<HashSet<String>>> = OnceLock::new();
+    let set = SEEN.get_or_init(|| Mutex::new(HashSet::new()));
+    if let Ok(mut s) = set.lock()
+        && s.insert(tok.to_string())
+    {
+        crate::timing::note(&format!("unknown teletext class token: {tok}"));
+    }
 }
 
 fn fg_from_token(tok: &str) -> Option<TtColor> {
@@ -359,5 +402,73 @@ fn bg_from_token(tok: &str) -> Option<TtColor> {
         "M" => Some(TtColor::Magenta),
         "Bl" => Some(TtColor::Black),
         _ => None,
+    }
+}
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn extract_url_unquoted() {
+        let style = "background-image: url(https://l.texttv.nu/storage/chars/abc.gif); other: foo;";
+        assert_eq!(
+            extract_url_from_style(style).as_deref(),
+            Some("https://l.texttv.nu/storage/chars/abc.gif")
+        );
+    }
+
+    #[test]
+    fn extract_url_double_quoted() {
+        let style = "background-image: url(\"https://example.com/has)paren.gif\");";
+        assert_eq!(
+            extract_url_from_style(style).as_deref(),
+            Some("https://example.com/has)paren.gif")
+        );
+    }
+
+    #[test]
+    fn extract_url_single_quoted() {
+        let style = "background-image: url('https://example.com/img.gif')";
+        assert_eq!(
+            extract_url_from_style(style).as_deref(),
+            Some("https://example.com/img.gif")
+        );
+    }
+
+    #[test]
+    fn extract_url_missing_returns_none() {
+        assert_eq!(extract_url_from_style("color: red;"), None);
+    }
+
+    #[test]
+    fn parse_cell_classes_defaults() {
+        let (fg, bg, mosaic) = parse_cell_classes("");
+        assert_eq!(fg, TtColor::White);
+        assert_eq!(bg, TtColor::Black);
+        assert!(!mosaic);
+    }
+
+    #[test]
+    fn parse_cell_classes_picks_fg_and_bg() {
+        let (fg, bg, mosaic) = parse_cell_classes("Y bgR");
+        assert_eq!(fg, TtColor::Yellow);
+        assert_eq!(bg, TtColor::Red);
+        assert!(!mosaic);
+    }
+
+    #[test]
+    fn parse_cell_classes_detects_mosaic() {
+        let (_, _, mosaic) = parse_cell_classes("bgImg G bgB");
+        assert!(mosaic);
+    }
+
+    #[test]
+    fn parse_cell_classes_ignores_structural_tokens() {
+        // Should not warn or affect colors; defaults stay.
+        let (fg, bg, _) = parse_cell_classes("line DH toprow root");
+        assert_eq!(fg, TtColor::White);
+        assert_eq!(bg, TtColor::Black);
     }
 }

@@ -55,8 +55,8 @@ emulators can't render in a predictable fashion.
 
 3. **Image mode**, on the other hand, asks your terminal to draw the original page GIF that SVT
 itself serves. Here, you'll get pixel-perfect rendering, but you lose selectable text.
-This is the default pick for terminals with a native graphics protocol (such as Kitty,
-Ghostty, WezTerm). On other terminal emulators, you can try it via `--mode auto`. On
+This is the default pick for terminals with a native graphics protocol (Kitty,
+Ghostty, WezTerm, iTerm2). On other terminal emulators, you can try it via `--mode auto`. On
 half-block-only terminals (these include Apple Terminal, Alacritty, Windows Terminal,
 and others) image mode falls back to a Unicode-half-block rendering, which is
 considerably worse than the teletext text path. Unless you have a very large terminal
@@ -199,7 +199,7 @@ This project is not affiliated with, endorsed by, or sponsored by SVT or
 texttv.nu. It's an independent reader for publicly broadcast teletext data.
 Please respect the upstream terms of service when using it — keep your
 requests reasonable, don't strip the User-Agent or the `app=` parameter, and
-don't use this tool to overload either service.
+don't use this tool or any part of this tool to overload either service.
 
 ## Translation
 
