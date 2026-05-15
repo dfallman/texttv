@@ -14,16 +14,31 @@ Ghostty, etc.)
 in most terminals to get started. To use, simply type `textv <PAGE>` (such as `texttv 100`). 
 
 ```bash
-texttv 300              # sport
-texttv 100              # news index
-texttv 400              # weather
-texttv --list           # show some named sections
+texttv 100              # Front page, latest news overview
+texttv 300              # Sports news
+texttv 400              # Weather
+texttv --list           # Show some named sections
 ```
 
 `PAGE` can be any integer between `100..=999`. Note that all pages aren't available at all
 times. If you enter a page that's not avaialable, `texttv` will tell you so.
 
-## What it shows you
+`texttv` is highly configurable, so the above is only the basic operation. Here are some
+examples of typical options (see below for details):
+
+```
+texttv 300 --mode teletext
+texttv 101 --mode iterm --size small --source svt --verbose 
+```
+
+The first example shows page 300 but overrides the default rendering mode (see below) to 
+teletext mode, which draws the page as text+ANSI.
+
+The second example enforces iTerm2's default rendering mode (image), outputs it in small
+size, enforces the source to be SVT, and shows verbose logging output in the console.
+
+
+# Rendering modes
 
 `texttv` has two different ways to render a page. The right one for your 
 terminal defaults automatically, but you can always override it. 
@@ -34,11 +49,11 @@ Both render types have their pros and cons, pick the one you like the most:
 truecolor, bold double-height headings, Unicode sextants for the mosaic
 block-characters (the SVT logo, sport icons, weather symbols, navigation
 borders). The benefits here is that the text you see is real text: copyable, 
-grep-able, narrow. The downside is that we inevitably will lose some
-minor details, such as double-height characters that most terminal emulators
-can't render in a predictable fashion.
+grep-able, and feels right at home in the terminal. The downside is that we lose some
+minor details on the page, most notably the double-height characters that most terminal
+emulators can't render in a predictable fashion.
 
-2. **Image mode**, on the other hand, asks your terminal to draw the original page GIF that SVT
+3. **Image mode**, on the other hand, asks your terminal to draw the original page GIF that SVT
 itself serves. Here, you'll get pixel-perfect rendering, but you lose selectable text.
 This is the default pick for terminals with a native graphics protocol (such as Kitty,
 Ghostty, WezTerm). On other terminal emulators, you can try it via `--mode auto`. On
@@ -58,7 +73,7 @@ texttv 300 --mode iterm          # force iTerm2 inline-image protocol
 texttv 300 --mode blocks         # force the half-block fallback
 ```
 
-## Install
+# Installation
 
 Make sure you have the latest version of Rust installed:
 ```bash
@@ -72,7 +87,7 @@ cd texttv
 cargo install --path .
 ```
 
-Requires Rust 1.85+ (edition 2024).
+Requires Rust 1.85+ (edition 2024). Use [Rustup](https://rustup.rs/) rather than your package manager to install Rust, which ensures you'll get the latest version.
 
 ## Options
 
@@ -178,6 +193,31 @@ to built-in defaults; unknown keys are an error.
 Decoded mosaic patterns persist to `$XDG_CACHE_HOME/texttv/mosaics/` so a
 given pattern is fetched once across all runs.
 
+## Translation
+
+SVT Text-TV is in Swedish, somewhat obviously. A built-in translation engine is
+out of scope for this application. However, there are ways around this if you
+don't speak Swedish (and yes, learning Swedish is one too!)
+
+First of all, make sure to use the teletext mode (`--mode teletext`) which outputs
+the pages as text. You can also use `--no-color` for added clarity.
+
+Then you can either copy and paste the outputed text into a translation engine or
+an LLM, or you can use terminal-based translation engines such as `translate-shell`.
+
+```
+brew install translate-shell
+```
+
+With it installed, pipe the output of `texttv` into the translation engine:
+
+```
+texttv 100 | trans -b sv:en
+```
+
+Not perfect, but you'll get the gist of it.
+
+
 ## License
 
-MIT or Apache-2.0, at your option.
+MIT
