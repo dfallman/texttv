@@ -55,10 +55,32 @@ pub fn render_images(images: &[DynamicImage], opts: RenderOptions) -> Result<Det
         if i > 0 {
             writeln!(stdout)?;
         }
-        viuer::print(img, &cfg).context("viuer failed to print image")?;
+        let framed = add_right_frame(img, RIGHT_FRAME_PX);
+        viuer::print(&framed, &cfg).context("viuer failed to print image")?;
     }
     writeln!(stdout)?;
     Ok(protocol)
+}
+
+/// Width in source pixels of the black frame added to the right edge of each
+/// rendered subpage. SVT's teletext glyphs are ~13 px wide in the served GIF,
+/// so 16 px gives a visible ~one-cell black margin after viuer scales the
+/// padded image down to 60 terminal cells.
+const RIGHT_FRAME_PX: u32 = 16;
+
+/// Pad the right side of an image with `pad_px` columns of black pixels.
+/// Returns a fresh RGB8 image; the original is left untouched.
+fn add_right_frame(img: &image::DynamicImage, pad_px: u32) -> image::DynamicImage {
+    if pad_px == 0 {
+        return img.clone();
+    }
+    let src = img.to_rgb8();
+    let (w, h) = (img.width(), img.height());
+    let mut framed: image::ImageBuffer<image::Rgb<u8>, Vec<u8>> =
+        image::ImageBuffer::new(w + pad_px, h);
+    // ImageBuffer::new zero-fills; for Rgb<u8> that's (0,0,0) = black.
+    image::imageops::replace(&mut framed, &src, 0, 0);
+    image::DynamicImage::ImageRgb8(framed)
 }
 
 /// Target image width in terminal cells. SVT teletext is 40 cols natively;
