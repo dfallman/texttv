@@ -8,9 +8,10 @@ use std::time::Duration;
 
 use anyhow::{Context, Result, anyhow};
 use crossterm::{
-    QueueableCommand, execute,
+    QueueableCommand,
     cursor::{Hide, MoveTo, Show},
     event::{Event, KeyCode, KeyEvent, KeyEventKind, poll, read},
+    execute,
     style::Print,
     terminal::{
         Clear, ClearType, EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode,
@@ -20,9 +21,7 @@ use crossterm::{
 
 use crate::parse::{ColoredPage, Line};
 
-pub(crate) const SPINNER: &[char] = &[
-    '⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏',
-];
+pub(crate) const SPINNER: &[char] = &['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
 /// Event-loop poll timeout (also the spinner cadence).
 pub(crate) const SPINNER_INTERVAL: Duration = Duration::from_millis(80);
 
@@ -143,8 +142,7 @@ pub fn handle_key(state: &mut State, ev: KeyEvent) -> Action {
                 if link.followable {
                     Action::StartFetch(link.target)
                 } else {
-                    state.status =
-                        Some(format!("Error: page {} not in 100..=999", link.target));
+                    state.status = Some(format!("Error: page {} not in 100..=999", link.target));
                     Action::None
                 }
             } else {
@@ -414,13 +412,11 @@ fn run_inner<W: Write>(initial_page: u16, out: &mut W) -> Result<()> {
             tick(&mut state);
         } else {
             match read().context("reading terminal event")? {
-                Event::Key(k) if k.kind == KeyEventKind::Press => {
-                    match handle_key(&mut state, k) {
-                        Action::None => {}
-                        Action::Quit => break,
-                        Action::StartFetch(page) => start_fetch(&mut state, page),
-                    }
-                }
+                Event::Key(k) if k.kind == KeyEventKind::Press => match handle_key(&mut state, k) {
+                    Action::None => {}
+                    Action::Quit => break,
+                    Action::StartFetch(page) => start_fetch(&mut state, page),
+                },
                 Event::Resize(_, _) => {} // just redraw below
                 _ => {}
             }
