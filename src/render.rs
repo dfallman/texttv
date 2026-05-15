@@ -22,20 +22,23 @@ impl std::fmt::Display for DetectedProtocol {
 #[derive(Debug, Clone, Copy)]
 pub struct RenderOptions {
     pub mode: crate::cli::Mode,
+    pub size: crate::cli::Size,
     pub debug_protocol: bool,
 }
 
 pub fn render_images(images: &[DynamicImage], opts: RenderOptions) -> Result<DetectedProtocol> {
     use crate::cli::Mode;
 
+    let target_width = opts.size.to_width(u32::from(terminal_cols()));
+
     let (cfg, protocol) = match opts.mode {
         Mode::Auto => {
             let p = detect_protocol();
-            (config_for(p), p)
+            (config_for(p, target_width), p)
         }
-        Mode::Kitty => (force_kitty_config(), DetectedProtocol::Kitty),
-        Mode::Iterm => (force_iterm_config(), DetectedProtocol::Iterm),
-        Mode::Blocks => (force_blocks_config(), DetectedProtocol::Halfblocks),
+        Mode::Kitty => (force_config(true, false, target_width), DetectedProtocol::Kitty),
+        Mode::Iterm => (force_config(false, true, target_width), DetectedProtocol::Iterm),
+        Mode::Blocks => (force_config(false, false, target_width), DetectedProtocol::Halfblocks),
         Mode::Teletext => unreachable!("Mode::Teletext is handled before render_images"),
     };
 
@@ -83,31 +86,16 @@ fn add_right_frame(img: &image::DynamicImage, pad_px: u32) -> image::DynamicImag
     image::DynamicImage::ImageRgb8(framed)
 }
 
-/// Safety cap for the half-block fallback. We fill the terminal width by
-/// default; this just bounds the worst case so an enormous terminal (or a
-/// misreported size) can't push viuer into a multi-second render.
-const HALFBLOCKS_MAX_WIDTH: u32 = 4000;
-
-fn halfblocks_width() -> u32 {
-    let term = u32::from(terminal_cols());
-    if term == 0 {
-        HALFBLOCKS_MAX_WIDTH
-    } else {
-        term.clamp(1, HALFBLOCKS_MAX_WIDTH)
-    }
-}
-
-fn config_for(p: DetectedProtocol) -> viuer::Config {
+fn config_for(p: DetectedProtocol, width: u32) -> viuer::Config {
     match p {
         DetectedProtocol::Kitty | DetectedProtocol::Iterm => viuer::Config {
             absolute_offset: false,
-            // No width override: native protocols render at natural pixel
-            // size (~74 cells for the 520-px GIF on a typical font).
+            width: Some(width),
             ..viuer::Config::default()
         },
         DetectedProtocol::Halfblocks => viuer::Config {
             absolute_offset: false,
-            width: Some(halfblocks_width()),
+            width: Some(width),
             use_kitty: false,
             use_iterm: false,
             ..viuer::Config::default()
@@ -115,30 +103,12 @@ fn config_for(p: DetectedProtocol) -> viuer::Config {
     }
 }
 
-fn force_kitty_config() -> viuer::Config {
+fn force_config(use_kitty: bool, use_iterm: bool, width: u32) -> viuer::Config {
     viuer::Config {
         absolute_offset: false,
-        use_kitty: true,
-        use_iterm: false,
-        ..viuer::Config::default()
-    }
-}
-
-fn force_iterm_config() -> viuer::Config {
-    viuer::Config {
-        absolute_offset: false,
-        use_kitty: false,
-        use_iterm: true,
-        ..viuer::Config::default()
-    }
-}
-
-fn force_blocks_config() -> viuer::Config {
-    viuer::Config {
-        absolute_offset: false,
-        width: Some(halfblocks_width()),
-        use_kitty: false,
-        use_iterm: false,
+        use_kitty,
+        use_iterm,
+        width: Some(width),
         ..viuer::Config::default()
     }
 }
