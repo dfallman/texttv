@@ -95,6 +95,7 @@ fn run(args: Args) -> Result<(), AppError> {
             let page_data = extract_page(&html, page).map_err(AppError::Runtime)?;
             let opts = RenderOptions {
                 mode: image_mode,
+                size: args.size,
                 debug_protocol: args.debug_protocol,
             };
             render_images(&page_data.images, opts).map_err(AppError::Runtime)?;

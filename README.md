@@ -45,6 +45,7 @@ Requires Rust 1.85+ (edition 2024).
 | Flag                                    | Meaning                                                                         |
 | --------------------------------------- | ------------------------------------------------------------------------------- |
 | `--mode {teletext,auto,kitty,iterm,blocks}` | Pick the rendering path. Defaults to `teletext`.                            |
+| `--size {tiny,small,medium,large,xl,full}` | Render size for image modes. Default `medium`. Ignored in teletext mode.     |
 | `--no-color`                            | Strip ANSI color and double-height escapes; plain mono.                         |
 | `--list`                                | Print the section index and exit.                                               |
 | `--source {svt,texttv-nu}`              | Override the data source. Default: `texttv-nu` for teletext mode, `svt` for image modes. |
@@ -66,12 +67,18 @@ Requires Rust 1.85+ (edition 2024).
 
 ## Image mode
 
-`--mode auto` (or `kitty` / `iterm` / `blocks`) renders the page GIF that
-SVT embeds. Native graphics protocols (Kitty/iTerm) render at the GIF's
-natural pixel size — about 74 cells wide on a typical font. The
-half-block fallback fills the terminal horizontally (with a 4000-cell
-safety bound so a misreported terminal size can't push viuer into a
-multi-second render).
+`--mode auto` (or `kitty` / `iterm` / `blocks`) renders the page GIF
+that SVT embeds. The width is set by `--size`:
+
+| `--size` | Cells wide |
+| -------- | ---------- |
+| `tiny`   | 30         |
+| `small`  | 45         |
+| `medium` | 60 (default) |
+| `large`  | 90         |
+| `xl`     | 120        |
+| `full`   | terminal width (capped at 4000) |
+
 The graphics protocol is auto-detected via
 [`viuer`](https://crates.io/crates/viuer):
 

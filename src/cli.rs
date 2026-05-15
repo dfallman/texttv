@@ -23,6 +23,45 @@ pub enum Source {
     TexttvNu,
 }
 
+/// Render size for image modes (auto/kitty/iterm/blocks). Ignored in teletext
+/// mode, where the page is always 41 cells wide.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
+pub enum Size {
+    /// 30 cells wide.
+    Tiny,
+    /// 45 cells wide.
+    Small,
+    /// 60 cells wide. The default.
+    Medium,
+    /// 90 cells wide.
+    Large,
+    /// 120 cells wide.
+    Xl,
+    /// Fill the terminal width.
+    Full,
+}
+
+impl Size {
+    /// Resolve to a cell-width using the current terminal size when needed.
+    /// `term_cols` is the detected terminal width (0 if undetectable).
+    pub fn to_width(self, term_cols: u32) -> u32 {
+        match self {
+            Self::Tiny => 30,
+            Self::Small => 45,
+            Self::Medium => 60,
+            Self::Large => 90,
+            Self::Xl => 120,
+            Self::Full => {
+                if term_cols == 0 {
+                    200
+                } else {
+                    term_cols.clamp(1, 4000)
+                }
+            }
+        }
+    }
+}
+
 #[derive(Debug, Parser)]
 #[command(name = "texttv", version, about = "Render SVT Text-TV pages in the terminal")]
 pub struct Args {
@@ -35,6 +74,10 @@ pub struct Args {
     /// kitty/iterm/blocks) to render the page GIF as a bitmap instead.
     #[arg(long, value_enum, default_value_t = Mode::Teletext)]
     pub mode: Mode,
+
+    /// Render size for image modes. Ignored in teletext mode.
+    #[arg(long, value_enum, default_value_t = Size::Medium)]
+    pub size: Size,
 
     /// Data source. Defaults to texttv-nu for teletext mode (rich color),
     /// svt for image modes. Override only for debugging or to fall back when
