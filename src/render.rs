@@ -227,15 +227,26 @@ fn write_dh_underline(dh_line: &crate::parse::Line, out: &mut dyn Write) -> Resu
         .map(|c| c.fg)
         .unwrap_or(crate::parse::TtColor::White);
 
+    let mut first = true;
     for cell in &dh_line.cells {
         let width = cell.text.chars().count();
         if width == 0 {
             continue;
         }
         // U+1FB0B SEXTANT-34 — a thin horizontal stroke in the middle of the
-        // cell. Renders as a teletext-native horizontal rule instead of the
-        // heavier ▀ upper-half block we used to emit.
-        let bar: String = "\u{1FB0B}".repeat(width);
+        // cell. The very first column of the row is the page's always-black
+        // left frame; emit a space there and bars from column 2 on.
+        let bar: String = if first {
+            let mut s = String::with_capacity(width * 4);
+            s.push(' ');
+            for _ in 1..width {
+                s.push('\u{1FB0B}');
+            }
+            s
+        } else {
+            "\u{1FB0B}".repeat(width)
+        };
+        first = false;
         let (fr, fg_g, fb) = bar_fg.rgb();
         let (br, bg_g, bb) = cell.bg.rgb();
         write!(
