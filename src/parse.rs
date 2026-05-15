@@ -163,7 +163,7 @@ pub fn parse_texttv_nu(json: &str, page_no: u16) -> Result<ColoredPage> {
         .and_then(|c| c.get(0))
         .and_then(|s| s.as_str())
         .ok_or_else(|| anyhow!("page {page_no}: missing content[0] in texttv.nu JSON"))?;
-    let lines = parse_colored_html(content_html);
+    let lines = dedupe_overflow(parse_colored_html(content_html));
     if lines.is_empty() {
         return Err(anyhow!("page {page_no} not available (no lines parsed)"));
     }
@@ -174,6 +174,44 @@ pub fn parse_texttv_nu(json: &str, page_no: u16) -> Result<ColoredPage> {
         page_no,
         lines,
         plain,
+    })
+}
+
+/// Teletext is 24 visible rows + a 25th status row. If the parser ever
+/// produces more than that — e.g. if texttv.nu starts stuttering DH lines or
+/// duplicates a header/footer — collapse consecutive identical text-bearing
+/// lines so we don't ship visible duplicates. Blank or mosaic-only lines are
+/// left alone; legitimate teletext frequently has runs of blank rows.
+const EXPECTED_TELETEXT_ROWS: usize = 25;
+
+fn dedupe_overflow(lines: Vec<Line>) -> Vec<Line> {
+    if lines.len() <= EXPECTED_TELETEXT_ROWS {
+        return lines;
+    }
+    let mut out: Vec<Line> = Vec::with_capacity(lines.len());
+    for line in lines {
+        let drop = out
+            .last()
+            .is_some_and(|prev| has_text_content(prev) && lines_equivalent(&line, prev));
+        if !drop {
+            out.push(line);
+        }
+    }
+    out
+}
+
+fn has_text_content(line: &Line) -> bool {
+    line.cells
+        .iter()
+        .any(|c| !c.mosaic && c.text.chars().any(|ch| !ch.is_whitespace()))
+}
+
+fn lines_equivalent(a: &Line, b: &Line) -> bool {
+    if a.cells.len() != b.cells.len() {
+        return false;
+    }
+    a.cells.iter().zip(&b.cells).all(|(x, y)| {
+        x.text == y.text && x.fg == y.fg && x.bg == y.bg && x.mosaic == y.mosaic
     })
 }
 
