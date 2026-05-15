@@ -157,21 +157,55 @@ protocol escape codes ending up in a pipe).
 ## Interactive mode
 
 Running `texttv` with no arguments — or with `-i` / `--interactive` — opens
-an in-terminal page browser starting at page 100:
+an in-terminal page browser starting at page 100. Pass an explicit page to
+start elsewhere, e.g. `texttv -i 300`.
 
-- Top-left shows the current page number with a braille spinner during loads.
-- Type three digits to jump to a page; no Enter required. Out-of-range
-  pages (000–099) flash an error in the hint bar.
-- Three-digit page references on the rendered page (anything in the form
-  ` XXX ` — `100.000` is *not* a link) are scannable with ↑/↓ and openable
-  with Enter. The selected link is shown in reverse video.
-- Backspace deletes from the page-number field; Esc quits.
+**The input field** sits in the top-left, overlaying the page's own
+header. It shows a triangle pointer (`⏵`) when idle and a braille spinner
+during loads, followed by the current page number. Type three digits to
+jump to a page — no Enter required, the page loads as soon as the third
+digit lands. Partial input shows as middle-dot placeholders (`3··`).
+Backspace removes the last typed digit. Out-of-range pages (`000`–`099`)
+flash an error in the hint bar.
+
+**Links** are three-digit page references found on the rendered page.
+The detector is permissive on purpose:
+
+- `" 300 "` — the bare case.
+- `" 328f "` — `f` is the multi-page suffix; the link targets 328.
+- `" 376- "` — trailing dash (range start with no upper bound).
+- `" 343-344 "` — range; both numbers become links.
+- `"100.000"` is *not* a link (digits adjacent to a `.`).
+
+When the cursor is on a link the three digits are highlighted in
+white-on-magenta. Press Enter or Space to follow it.
+
+**Multi-page** pages (the `XXXf` indicator) carry multiple subpages.
+The bottom bar replaces the standard hint with a subpage selector:
+`Page: >1< 2 3 4 …` with `>active<` marking the currently rendered
+subpage. When the cursor is parked on a subpage selector, `←/→` cycle
+through the subpages instead of stepping page numbers.
+
+**Keys:**
+
+| Key | Action |
+| --- | --- |
+| `0`–`9` | Type a page number (3 digits → load immediately) |
+| Backspace | Remove last typed digit |
+| `↑` `↓` | Move between input field, links, and subpage selectors |
+| `←` `→` | Page ±1 (or cycle subpages when on a subpage selector) |
+| Enter / Space | Follow the selected link, or switch subpage |
+| `q` / Esc | Quit |
+
+A freshly-loaded page has no active link until you press an arrow key.
+The input field is reachable via `↑` from the topmost page link.
 
 Interactive mode always uses teletext rendering — image modes are not
 compatible with link scanning. `--mode` and `--source` flags are ignored
-(with a one-line stderr warning) if passed alongside `-i`. The terminal
-must be at least 41 columns × 27 rows. Pass an explicit page to start
-elsewhere, e.g. `texttv -i 300`.
+(with a one-line stderr warning) if passed alongside `-i`. If a page
+doesn't exist, a centered "Sidan finns inte" placeholder renders in
+place of content and `←/→` keep working so you can step past gaps in
+SVT's numbering. The terminal must be at least 41 columns × 26 rows.
 
 ## Config file
 
