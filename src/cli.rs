@@ -151,10 +151,19 @@ pub const SECTIONS: &[(u16, &str)] = &[
     (888, "Text-TV-information"),
 ];
 
-pub fn print_sections(out: &mut dyn std::io::Write) -> std::io::Result<()> {
-    writeln!(out, "SVT Text-TV — well-known pages:")?;
-    for (page, name) in SECTIONS {
-        writeln!(out, "  {page:>3}  {name}")?;
+pub fn print_sections(out: &mut dyn std::io::Write, color: bool) -> std::io::Result<()> {
+    use owo_colors::OwoColorize;
+    if color {
+        writeln!(out, "{}", "SVT Text-TV:".blue().bold())?;
+        for (page, name) in SECTIONS {
+            let n = format!("{page:>3}");
+            writeln!(out, "  {}  {name}", n.white())?;
+        }
+    } else {
+        writeln!(out, "SVT Text-TV:")?;
+        for (page, name) in SECTIONS {
+            writeln!(out, "  {page:>3}  {name}")?;
+        }
     }
     Ok(())
 }
@@ -207,9 +216,21 @@ mod tests {
     #[test]
     fn print_sections_writes_known_entries() {
         let mut buf = Vec::new();
-        print_sections(&mut buf).expect("write");
+        print_sections(&mut buf, false).expect("write");
         let out = String::from_utf8(buf).expect("utf8");
         assert!(out.contains("100  Innehåll"));
         assert!(out.contains("300  Sport"));
+        // No ANSI escapes in the no-color path.
+        assert!(!out.contains('\x1b'));
+    }
+
+    #[test]
+    fn print_sections_with_color_emits_ansi() {
+        let mut buf = Vec::new();
+        print_sections(&mut buf, true).expect("write");
+        let out = String::from_utf8(buf).expect("utf8");
+        // Bold + blue on header, white on each page number.
+        assert!(out.contains("\x1b["), "expected ANSI escapes");
+        assert!(out.contains("SVT Text-TV:"));
     }
 }

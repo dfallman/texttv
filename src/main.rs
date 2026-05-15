@@ -55,16 +55,6 @@ fn unique_mosaic_count(cp: &texttv::parse::ColoredPage) -> usize {
 }
 
 fn run(args: Args) -> Result<(), AppError> {
-    if args.list {
-        let mut out = std::io::stdout().lock();
-        print_sections(&mut out).map_err(|e| AppError::Runtime(e.into()))?;
-        return Ok(());
-    }
-
-    let page = args
-        .page
-        .ok_or_else(|| AppError::User("PAGE is required".into()))?;
-
     // Load ~/.config/texttv/config.yaml; broken config is non-fatal — we warn
     // and fall back to defaults, so a typo doesn't lock the user out.
     let cfg = Config::load().unwrap_or_else(|e| {
@@ -85,6 +75,16 @@ fn run(args: Args) -> Result<(), AppError> {
         || cfg.no_color.unwrap_or(false)
         || std::env::var_os("NO_COLOR").is_some()
         || piped;
+
+    if args.list {
+        let mut out = std::io::stdout().lock();
+        print_sections(&mut out, !no_color).map_err(|e| AppError::Runtime(e.into()))?;
+        return Ok(());
+    }
+
+    let page = args
+        .page
+        .ok_or_else(|| AppError::User("PAGE is required".into()))?;
 
     // Resolve --mode: CLI wins, then config, then terminal-based default.
     let resolved_mode = args
