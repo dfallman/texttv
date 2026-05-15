@@ -68,7 +68,9 @@ impl State {
 
     /// Install a freshly-parsed page: copy in all subpages, render the
     /// first one, rescan in-page links, append subpage selector links
-    /// (when there's more than one subpage), seed selection.
+    /// (when there's more than one subpage). Selection resets to `None`
+    /// so a freshly-loaded page has no inverted link until the user
+    /// presses ↑ or ↓.
     pub fn install_page(&mut self, page: ColoredPage) {
         self.current_page = page.page_no;
         self.subpages = page.subpages;
@@ -80,7 +82,7 @@ impl State {
         self.subpage_idx = 0;
         self.lines = self.subpages[0].clone();
         self.rebuild_links();
-        self.selected = if self.links.is_empty() { None } else { Some(0) };
+        self.selected = None;
         self.fetch = FetchState::Idle;
         self.pending_rx = None;
         self.input_buf.clear();
@@ -95,7 +97,7 @@ impl State {
         self.lines = placeholder_lines();
         self.subpages = vec![self.lines.clone()];
         self.subpage_idx = 0;
-        self.links = Vec::new();
+        self.rebuild_links();
         self.selected = None;
         self.fetch = FetchState::Idle;
         self.pending_rx = None;
@@ -121,11 +123,20 @@ impl State {
     }
 
     fn rebuild_links(&mut self) {
-        let mut links: Vec<Link> = scan_links(&self.lines);
-        // Filter out links on row 0 — that's the input-overlay area, and a
-        // link there would either be wiped by the overlay (cols 0..6) or
-        // clash with it (cols >= 6).
-        links.retain(|l| l.row != 0);
+        // Always-on input slot at index 0 — ↑/↓ navigation starts here.
+        let mut links: Vec<Link> = vec![Link {
+            row: 0,
+            col_start: 0,
+            col_len: 0,
+            kind: LinkKind::InputField,
+            target: 0,
+            followable: false,
+        }];
+        let mut page_links = scan_links(&self.lines);
+        // Filter out scanned links on row 0 — that's the input-overlay
+        // area and a highlight there would clash with the input field.
+        page_links.retain(|l| l.row != 0);
+        links.extend(page_links);
         if self.subpages.len() > 1 {
             for i in 0..self.subpages.len() {
                 links.push(Link {
@@ -224,17 +235,21 @@ pub fn handle_key(state: &mut State, ev: KeyEvent) -> Action {
             Action::None
         }
         KeyCode::Up => {
-            if let Some(sel) = state.selected {
-                state.selected = Some(sel.saturating_sub(1));
-            }
+            state.selected = match state.selected {
+                // ↑ from no-selection wakes us up at the input slot
+                // (the first navigable target).
+                None if !state.links.is_empty() => Some(0),
+                Some(sel) => Some(sel.saturating_sub(1)),
+                None => None,
+            };
             Action::None
         }
         KeyCode::Down => {
-            if let Some(sel) = state.selected
-                && sel + 1 < state.links.len()
-            {
-                state.selected = Some(sel + 1);
-            }
+            state.selected = match state.selected {
+                None if !state.links.is_empty() => Some(0),
+                Some(sel) if sel + 1 < state.links.len() => Some(sel + 1),
+                other => other,
+            };
             Action::None
         }
         KeyCode::Left => {
@@ -260,6 +275,7 @@ pub fn handle_key(state: &mut State, ev: KeyEvent) -> Action {
                 && let Some(link) = state.links.get(sel).cloned()
             {
                 match link.kind {
+                    LinkKind::InputField => Action::None,
                     LinkKind::Page => {
                         if link.followable {
                             state.input_buf.clear();
@@ -283,11 +299,16 @@ pub fn handle_key(state: &mut State, ev: KeyEvent) -> Action {
     }
 }
 
-/// Distinguishes between links that load another page (the canonical
-/// 3-digit references scanned from page content) and the subpage
-/// selectors rendered in the hint bar for multi-page pages.
+/// Distinguishes between the three navigable targets in interactive mode:
+/// the input field at the top, the page links scanned from page content,
+/// and the subpage selectors rendered in the hint bar.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum LinkKind {
+    /// The top-left input field. Always present at `state.links[0]`.
+    /// Selectable via ↑/↓ but visually unchanged from the unselected
+    /// state — the user already sees the triangle pointer + system
+    /// cursor that mark where typing goes.
+    InputField,
     /// Load a different page via fetch. `Link::target` is the page number.
     Page,
     /// Switch the local subpage index (no fetch). `Link::target` is the
@@ -381,35 +402,25 @@ pub fn scan_links(lines: &[Line]) -> Vec<Link> {
             let target_str: String = chars[i..i + 3].iter().collect();
             let target: u16 = target_str.parse().unwrap_or(0);
 
-            // Visual extent: the 3 digits, plus an optional 'f' suffix,
-            // plus up to one cell of flanking space/dash on each side.
-            // Keeps highlight extents consistent (typically 4–6 cells).
-            let mut core_end = i + 3;
-            if core_end < chars.len() && chars[core_end] == 'f' {
-                core_end += 1;
-            }
-            let left_pad = if i > 0 && matches!(chars[i - 1], ' ' | '-') {
-                1
-            } else {
-                0
-            };
-            let right_pad = if core_end < chars.len() && matches!(chars[core_end], ' ' | '-') {
-                1
-            } else {
-                0
-            };
-            let col_start = (i - left_pad) as u16;
-            let col_len = (core_end + right_pad - i + left_pad) as u16;
-
+            // Highlight extent covers just the 3 digits — no flanking
+            // padding, no 'f' suffix. The colored block then sits tightly
+            // on the page number, which reads cleaner than including
+            // the space cells on either side.
             out.push(Link {
                 row: row as u16,
-                col_start,
-                col_len,
+                col_start: i as u16,
+                col_len: 3,
                 kind: LinkKind::Page,
                 target,
                 followable: target >= 100,
             });
-            i = core_end;
+            // Step past the 3 digits and the optional 'f' so we don't
+            // re-trigger or trip the longer-run guard against a number
+            // that follows.
+            i += 3;
+            if i < chars.len() && chars[i] == 'f' {
+                i += 1;
+            }
         }
     }
     out
@@ -438,6 +449,12 @@ const PAGE_HEIGHT_MAX: u16 = 25;
 /// own row 0).
 const INPUT_CURSOR_GLYPH: char = '⏵';
 
+/// Foreground (white) and background (#e832ff) for the selected-link
+/// highlight. Used for both in-page `Page` links and the selected
+/// indicator in the multi-page subpage selector.
+const LINK_FG: (u8, u8, u8) = (255, 255, 255);
+const LINK_BG: (u8, u8, u8) = (0xe8, 0x32, 0xff);
+
 /// Compose the input-row content. The leading cell is the spinner while
 /// fetching and a triangle pointer (`⏵`) otherwise:
 ///
@@ -464,10 +481,10 @@ fn input_row(state: &State) -> String {
 }
 
 /// Compose the multi-page subpage selector "Page: >1< 2 3 4 …", centered
-/// within `CHROME_WIDTH`, styled white-on-black, with the selected
-/// indicator (if any) wrapped in reverse-video escapes. The
-/// `>active<` brackets mark which subpage is currently rendered; the
-/// reverse-video marks where the user's selection cursor is.
+/// within `CHROME_WIDTH`. The whole row is white-on-black; the
+/// `>active<` brackets mark which subpage is currently rendered, and the
+/// selected indicator (if any) is overpainted with the `LINK_BG`/`LINK_FG`
+/// block matching in-page link highlights.
 fn compose_subpage_hint(active_idx: usize, total: usize, selected_idx: Option<usize>) -> String {
     // Build the plain text first to figure out the centering offset.
     let mut plain = String::from("Page: ");
@@ -489,29 +506,34 @@ fn compose_subpage_hint(active_idx: usize, total: usize, selected_idx: Option<us
     let left_pad = pad / 2;
     let right_pad = pad - left_pad;
 
-    // Now re-emit the content with inline `\x1b[7m`/`\x1b[27m` around the
-    // selected indicator. The whole row is wrapped in white-on-black so
-    // truecolor + the inversion compose into a black-on-white block.
-    let mut inner = String::with_capacity(CHROME_WIDTH * 4);
-    inner.push_str(&" ".repeat(left_pad));
-    inner.push_str("Page: ");
+    // Render each segment with the appropriate styling, then concatenate.
+    // owo-colors' truecolor wraps each segment with set + reset escapes,
+    // so the segments compose without bleeding into each other.
+    let mut out = String::with_capacity(CHROME_WIDTH * 8);
+    let bg_default = (0u8, 0u8, 0u8);
+    let fg_default = (255u8, 255u8, 255u8);
+    let push_styled = |out: &mut String, text: &str, fg: (u8, u8, u8), bg: (u8, u8, u8)| {
+        out.push_str(
+            &text
+                .truecolor(fg.0, fg.1, fg.2)
+                .on_truecolor(bg.0, bg.1, bg.2)
+                .to_string(),
+        );
+    };
+    push_styled(&mut out, &" ".repeat(left_pad), fg_default, bg_default);
+    push_styled(&mut out, "Page: ", fg_default, bg_default);
     for (i, label) in labels.iter().enumerate() {
         if Some(i) == selected_idx {
-            inner.push_str("\x1b[7m");
-            inner.push_str(label);
-            inner.push_str("\x1b[27m");
+            push_styled(&mut out, label, LINK_FG, LINK_BG);
         } else {
-            inner.push_str(label);
+            push_styled(&mut out, label, fg_default, bg_default);
         }
         if i + 1 < total {
-            inner.push(' ');
+            push_styled(&mut out, " ", fg_default, bg_default);
         }
     }
-    inner.push_str(&" ".repeat(right_pad));
-    inner
-        .truecolor(255, 255, 255)
-        .on_truecolor(0, 0, 0)
-        .to_string()
+    push_styled(&mut out, &" ".repeat(right_pad), fg_default, bg_default);
+    out
 }
 
 /// Pad `text` to `width` cells by centering it, with the surplus split
@@ -561,9 +583,10 @@ pub fn draw<W: Write>(state: &State, out: &mut W) -> anyhow::Result<()> {
         crate::render::render_colored(slice, true, out)?;
     }
 
-    // Selected-link highlight for in-page `Page` links — reverse-video
-    // overlay at the link's row/col. Subpage selectors are inverted
-    // inline by the hint-bar render path below, so we skip them here.
+    // Selected-link highlight for in-page `Page` links — white-on-magenta
+    // block on the 3 digits. `LinkKind::InputField` (already shown via
+    // the triangle+cursor) and `LinkKind::Subpage` (inverted inline by
+    // the hint-bar render) are both skipped here.
     if let Some(sel) = state.selected
         && let Some(link) = state.links.get(sel)
         && link.kind == LinkKind::Page
@@ -572,9 +595,11 @@ pub fn draw<W: Write>(state: &State, out: &mut W) -> anyhow::Result<()> {
         if let Some(line) = state.lines.get(row_idx) {
             out.queue(MoveTo(link.col_start, link.row))?;
             let visible = visible_chars_at(line, link.col_start, link.col_len);
-            out.queue(Print("\x1b[7m"))?;
-            out.queue(Print(visible))?;
-            out.queue(Print("\x1b[27m"))?;
+            let styled = visible
+                .truecolor(LINK_FG.0, LINK_FG.1, LINK_FG.2)
+                .on_truecolor(LINK_BG.0, LINK_BG.1, LINK_BG.2)
+                .to_string();
+            out.queue(Print(styled))?;
         }
     }
 
@@ -866,8 +891,9 @@ mod tests {
         assert_eq!(links.len(), 1);
         assert_eq!(links[0].target, 300);
         assert_eq!(links[0].row, 0);
-        assert_eq!(links[0].col_start, 0);
-        assert_eq!(links[0].col_len, 5);
+        // Highlight covers just the 3 digits (col 1..=3).
+        assert_eq!(links[0].col_start, 1);
+        assert_eq!(links[0].col_len, 3);
         assert!(links[0].followable);
     }
 
@@ -901,8 +927,13 @@ mod tests {
         assert_eq!(links.len(), 2);
         assert_eq!(links[0].target, 300);
         assert_eq!(links[1].target, 400);
-        assert_eq!(links[0].col_start, 0);
-        assert_eq!(links[1].col_start, 5);
+        // Digits-only extents: " 300  400 "
+        //   col: 0 1 2 3 4 5 6 7 8 9
+        //         3 0 0     4 0 0
+        assert_eq!(links[0].col_start, 1);
+        assert_eq!(links[0].col_len, 3);
+        assert_eq!(links[1].col_start, 6);
+        assert_eq!(links[1].col_len, 3);
     }
 
     #[test]
@@ -911,7 +942,7 @@ mod tests {
         let links = scan_links(&lines);
         assert_eq!(links.len(), 1);
         assert_eq!(links[0].col_start, 0);
-        assert_eq!(links[0].col_len, 4);
+        assert_eq!(links[0].col_len, 3);
     }
 
     #[test]
@@ -919,8 +950,8 @@ mod tests {
         let lines = vec![line("foo 300")];
         let links = scan_links(&lines);
         assert_eq!(links.len(), 1);
-        assert_eq!(links[0].col_start, 3);
-        assert_eq!(links[0].col_len, 4);
+        assert_eq!(links[0].col_start, 4);
+        assert_eq!(links[0].col_len, 3);
     }
 
     #[test]
@@ -929,9 +960,9 @@ mod tests {
         let links = scan_links(&lines);
         assert_eq!(links.len(), 1);
         assert_eq!(links[0].target, 328);
-        // ' 328f ' → 6 cells; col_start=0; extent covers ' ', '328', 'f', ' '
-        assert_eq!(links[0].col_start, 0);
-        assert_eq!(links[0].col_len, 6);
+        // Highlight excludes the 'f' suffix and surrounding spaces.
+        assert_eq!(links[0].col_start, 1);
+        assert_eq!(links[0].col_len, 3);
         assert!(links[0].followable);
     }
 
@@ -941,8 +972,8 @@ mod tests {
         let links = scan_links(&lines);
         assert_eq!(links.len(), 1);
         assert_eq!(links[0].target, 328);
-        // No trailing space pad → col_len = 5 (' 328f')
-        assert_eq!(links[0].col_len, 5);
+        assert_eq!(links[0].col_start, 1);
+        assert_eq!(links[0].col_len, 3);
     }
 
     #[test]
@@ -951,8 +982,8 @@ mod tests {
         let links = scan_links(&lines);
         assert_eq!(links.len(), 1);
         assert_eq!(links[0].target, 376);
-        assert_eq!(links[0].col_start, 0);
-        assert_eq!(links[0].col_len, 5);
+        assert_eq!(links[0].col_start, 1);
+        assert_eq!(links[0].col_len, 3);
     }
 
     #[test]
@@ -994,16 +1025,15 @@ mod tests {
     #[test]
     fn scan_links_columns_are_char_positions_not_byte_positions() {
         // Regression: Swedish 'ö' is 2 bytes in UTF-8. A byte-indexed
-        // scanner reports col_start = 4 (the leading space byte position)
-        // for the link " 300 ", which paints the reverse-video highlight
-        // one cell to the right of where the digits actually render.
+        // scanner reports col_start one cell too far right because every
+        // multi-byte char before the link overcounts the column.
         let lines = vec![line("Höj 300 hi")];
         let links = scan_links(&lines);
         assert_eq!(links.len(), 1);
         assert_eq!(links[0].target, 300);
-        // 'H'=col 0, 'ö'=col 1, 'j'=col 2, ' '=col 3, '3'=col 4 → col_start = 3
-        assert_eq!(links[0].col_start, 3);
-        assert_eq!(links[0].col_len, 5);
+        // 'H'=col 0, 'ö'=col 1, 'j'=col 2, ' '=col 3, '3'=col 4 → digits at col 4
+        assert_eq!(links[0].col_start, 4);
+        assert_eq!(links[0].col_len, 3);
     }
 
     #[test]
@@ -1085,21 +1115,31 @@ mod tests {
     }
 
     #[test]
-    fn down_arrow_moves_selection_within_bounds() {
+    fn down_arrow_wakes_then_steps_through_links() {
         let mut s = State::initial(100);
         s.install_page(page_with_links());
-        assert_eq!(s.selected, Some(0));
+        // Fresh page → no selection.
+        assert_eq!(s.selected, None);
+        // links: [InputField, Page(300), Page(400)]
         handle_key(&mut s, key(KeyCode::Down));
-        assert_eq!(s.selected, Some(1));
+        assert_eq!(s.selected, Some(0)); // input field
+        handle_key(&mut s, key(KeyCode::Down));
+        assert_eq!(s.selected, Some(1)); // Page(300)
+        handle_key(&mut s, key(KeyCode::Down));
+        assert_eq!(s.selected, Some(2)); // Page(400)
         // Saturating at last.
         handle_key(&mut s, key(KeyCode::Down));
-        assert_eq!(s.selected, Some(1));
+        assert_eq!(s.selected, Some(2));
     }
 
     #[test]
-    fn up_arrow_moves_selection_within_bounds() {
+    fn up_arrow_wakes_then_steps_through_links() {
         let mut s = State::initial(100);
         s.install_page(page_with_links());
+        // ↑ from None also wakes selection at index 0.
+        handle_key(&mut s, key(KeyCode::Up));
+        assert_eq!(s.selected, Some(0));
+        // Step forward then back.
         handle_key(&mut s, key(KeyCode::Down));
         assert_eq!(s.selected, Some(1));
         handle_key(&mut s, key(KeyCode::Up));
@@ -1113,8 +1153,30 @@ mod tests {
     fn enter_on_followable_link_emits_start_fetch() {
         let mut s = State::initial(100);
         s.install_page(page_with_links());
+        // Wake selection, then step past InputField to first page link.
+        handle_key(&mut s, key(KeyCode::Down));
+        handle_key(&mut s, key(KeyCode::Down));
         let action = handle_key(&mut s, key(KeyCode::Enter));
         assert_eq!(action, Action::StartFetch(300));
+    }
+
+    #[test]
+    fn enter_on_input_field_is_noop() {
+        let mut s = State::initial(100);
+        s.install_page(page_with_links());
+        // ↓ once → InputField (index 0). Enter should be a no-op.
+        handle_key(&mut s, key(KeyCode::Down));
+        let action = handle_key(&mut s, key(KeyCode::Enter));
+        assert_eq!(action, Action::None);
+    }
+
+    #[test]
+    fn enter_without_selection_is_noop() {
+        let mut s = State::initial(100);
+        s.install_page(page_with_links());
+        assert_eq!(s.selected, None);
+        let action = handle_key(&mut s, key(KeyCode::Enter));
+        assert_eq!(action, Action::None);
     }
 
     #[test]
@@ -1122,6 +1184,9 @@ mod tests {
         let mut s = State::initial(100);
         // Row 0 is filtered out, so put the unfollowable link on row 1.
         s.install_page(make_page(100, vec![line(" "), line(" 099 ")]));
+        // ↓ to wake → InputField, ↓ to Page(99).
+        handle_key(&mut s, key(KeyCode::Down));
+        handle_key(&mut s, key(KeyCode::Down));
         let action = handle_key(&mut s, key(KeyCode::Enter));
         assert_eq!(action, Action::None);
         assert!(s.status.is_some());
@@ -1192,7 +1257,10 @@ mod tests {
         let mut s = State::initial(100);
         s.install_placeholder(420);
         assert_eq!(s.current_page, 420);
-        assert!(s.links.is_empty());
+        // Placeholder has no in-page links and no subpage selectors;
+        // only the always-on InputField slot remains.
+        assert_eq!(s.links.len(), 1);
+        assert_eq!(s.links[0].kind, LinkKind::InputField);
         assert_eq!(s.selected, None);
         let combined: String = s
             .lines
@@ -1254,21 +1322,19 @@ mod tests {
             ],
         ));
         assert_eq!(s.subpage_idx, 0);
-        // Navigate to the second subpage selector. links order:
-        //   [Page(300), Subpage(0), Subpage(1)]
-        // selected starts at 0 (Page link); step ↓ twice to reach Subpage(1).
+        // links: [InputField, Page(300), Subpage(0), Subpage(1)]
+        // selected starts at None; ↓ to wake → 0, then ↓×3 to reach Subpage(1).
+        handle_key(&mut s, key(KeyCode::Down));
+        handle_key(&mut s, key(KeyCode::Down));
         handle_key(&mut s, key(KeyCode::Down));
         handle_key(&mut s, key(KeyCode::Down));
         let sel_idx = s.selected.expect("selected should be Some");
-        assert_eq!(
-            s.links[sel_idx].kind,
-            LinkKind::Subpage,
-            "expected to land on a subpage link"
-        );
+        let link = &s.links[sel_idx];
+        assert_eq!(link.kind, LinkKind::Subpage);
+        assert_eq!(link.target, 1, "expected to land on Subpage(1)");
         let action = handle_key(&mut s, key(KeyCode::Enter));
         assert_eq!(action, Action::None);
         assert_eq!(s.subpage_idx, 1, "subpage_idx should advance");
-        // After switching, `lines` matches the new subpage.
         let combined: String = s
             .lines
             .iter()
@@ -1411,15 +1477,23 @@ mod tests {
     }
 
     #[test]
-    fn draw_emits_reverse_video_escape_for_selected_link() {
+    fn draw_emits_magenta_highlight_for_selected_page_link() {
         let mut s = State::initial(100);
         s.install_page(page_with_links());
-        assert_eq!(s.selected, Some(0));
+        // Wake selection and step past InputField onto first page link.
+        handle_key(&mut s, key(KeyCode::Down));
+        handle_key(&mut s, key(KeyCode::Down));
+        let sel = s.selected.expect("should have a selection");
+        assert_eq!(s.links[sel].kind, LinkKind::Page);
         let mut buf: Vec<u8> = Vec::new();
         draw(&s, &mut buf).expect("draw");
         let out = String::from_utf8_lossy(&buf);
-        assert!(out.contains("\x1b[7m"), "no reverse-on escape: {out:?}");
-        assert!(out.contains("\x1b[27m"), "no reverse-off escape: {out:?}");
+        // White foreground (255,255,255) + magenta background (#e832ff)
+        // emitted around the digit run.
+        assert!(
+            out.contains("\x1b[48;2;232;50;255m"),
+            "no magenta bg escape: {out:?}"
+        );
     }
 
     #[test]
