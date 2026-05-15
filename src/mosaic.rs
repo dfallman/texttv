@@ -20,7 +20,7 @@ const FETCH_TIMEOUT_SECS: u64 = 5;
 const USER_AGENT: &str = concat!(
     "texttv/",
     env!("CARGO_PKG_VERSION"),
-    " (+mosaic-fetch)"
+    " (+https://github.com/dfallman/texttv; mosaic-fetch)"
 );
 
 /// Shared HTTP agent. Building one fresh per call meant a new TLS handshake
@@ -75,11 +75,12 @@ pub fn resolve_pattern(url: &str, fg: TtColor, bg: TtColor) -> Result<u8> {
     Ok(pattern)
 }
 
+/// Resolve the on-disk mosaic-cache directory per OS conventions via `dirs`:
+/// Linux: `$XDG_CACHE_HOME/texttv/mosaics` or `~/.cache/texttv/mosaics`;
+/// macOS: `~/Library/Caches/texttv/mosaics`;
+/// Windows: `%LOCALAPPDATA%\texttv\mosaics`.
 fn cache_dir() -> Option<PathBuf> {
-    let base = std::env::var_os("XDG_CACHE_HOME")
-        .map(PathBuf::from)
-        .or_else(|| std::env::var_os("HOME").map(|h| PathBuf::from(h).join(".cache")))?;
-    Some(base.join("texttv").join("mosaics"))
+    dirs::cache_dir().map(|d| d.join("texttv").join("mosaics"))
 }
 
 /// File name = the bare GIF hash from the URL (the digits before `.gif`).

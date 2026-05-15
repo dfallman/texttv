@@ -33,18 +33,19 @@ impl Config {
         }
         let body = std::fs::read_to_string(&path)
             .with_context(|| format!("reading {}", path.display()))?;
-        let cfg: Self = serde_yaml::from_str(&body)
+        let cfg: Self = serde_yaml_ng::from_str(&body)
             .with_context(|| format!("parsing {}", path.display()))?;
         Ok(cfg)
     }
 
-    /// Path to the config file, or `None` when neither `XDG_CONFIG_HOME`
-    /// nor `HOME` is set (e.g. on a constrained CI runner).
+    /// Path to the config file, or `None` when the platform config directory
+    /// can't be resolved (e.g. neither `HOME` nor `XDG_CONFIG_HOME` set).
+    /// Resolves per OS conventions via `dirs`:
+    /// - Linux: `$XDG_CONFIG_HOME/texttv` or `~/.config/texttv`
+    /// - macOS: `~/Library/Application Support/texttv`
+    /// - Windows: `%APPDATA%\texttv`
     pub fn path() -> Option<PathBuf> {
-        let base = std::env::var_os("XDG_CONFIG_HOME")
-            .map(PathBuf::from)
-            .or_else(|| std::env::var_os("HOME").map(|h| PathBuf::from(h).join(".config")))?;
-        Some(base.join("texttv").join("config.yaml"))
+        dirs::config_dir().map(|d| d.join("texttv").join("config.yaml"))
     }
 }
 
@@ -56,7 +57,7 @@ mod tests {
 
     #[test]
     fn empty_yaml_yields_defaults() {
-        let cfg: Config = serde_yaml::from_str("").unwrap_or_default();
+        let cfg: Config = serde_yaml_ng::from_str("").unwrap_or_default();
         assert!(cfg.mode.is_none());
         assert!(cfg.size.is_none());
         assert!(cfg.source.is_none());
@@ -73,7 +74,7 @@ no_color: true
 verbose: true
 padding: false
 ";
-        let cfg: Config = serde_yaml::from_str(yaml).expect("parse");
+        let cfg: Config = serde_yaml_ng::from_str(yaml).expect("parse");
         assert_eq!(cfg.mode, Some(Mode::Teletext));
         assert_eq!(cfg.size, Some(Size::Large));
         assert_eq!(cfg.source, Some(Source::TexttvNu));
@@ -85,7 +86,7 @@ padding: false
     #[test]
     fn unknown_keys_are_rejected() {
         let yaml = "bogus_key: 1\n";
-        let err = serde_yaml::from_str::<Config>(yaml).unwrap_err();
+        let err = serde_yaml_ng::from_str::<Config>(yaml).unwrap_err();
         let msg = err.to_string().to_lowercase();
         assert!(msg.contains("unknown") || msg.contains("bogus"));
     }
