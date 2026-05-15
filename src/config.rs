@@ -16,6 +16,7 @@ pub struct Config {
     pub size: Option<Size>,
     pub source: Option<Source>,
     pub no_color: Option<bool>,
+    pub verbose: Option<bool>,
 }
 
 impl Config {
@@ -68,12 +69,14 @@ mode: teletext
 size: large
 source: texttv-nu
 no_color: true
+verbose: true
 ";
         let cfg: Config = serde_yaml::from_str(yaml).expect("parse");
         assert_eq!(cfg.mode, Some(Mode::Teletext));
         assert_eq!(cfg.size, Some(Size::Large));
         assert_eq!(cfg.source, Some(Source::TexttvNu));
         assert_eq!(cfg.no_color, Some(true));
+        assert_eq!(cfg.verbose, Some(true));
     }
 
     #[test]
