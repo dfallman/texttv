@@ -1,11 +1,18 @@
 //! In-terminal interactive page browser. See
 //! `docs/superpowers/specs/2026-05-15-interactive-mode-design.md`.
 
+use std::io::Write;
 use std::sync::mpsc::Receiver;
 use std::time::Duration;
 
 use anyhow::Result;
-use crossterm::event::{KeyCode, KeyEvent};
+use crossterm::{
+    QueueableCommand,
+    cursor::{Hide, MoveTo, Show},
+    event::{KeyCode, KeyEvent},
+    style::Print,
+    terminal::{Clear, ClearType},
+};
 
 use crate::parse::{ColoredPage, Line};
 
@@ -238,6 +245,59 @@ pub fn tick(state: &mut State) {
     if let FetchState::Fetching { frame, .. } = &mut state.fetch {
         *frame = (*frame + 1) % SPINNER.len();
     }
+}
+
+/// Compose the input-row string. `frame` is `Some(glyph)` while fetching.
+fn input_row(state: &State) -> String {
+    let glyph = match state.fetch {
+        FetchState::Fetching { frame, .. } => SPINNER[frame % SPINNER.len()],
+        FetchState::Idle => ' ',
+    };
+    let digits: String = if state.input_buf.is_empty() {
+        format!("{:03}", state.current_page)
+    } else {
+        let mut s = state.input_buf.clone();
+        while s.len() < 3 {
+            s.push('_');
+        }
+        s
+    };
+    format!("{glyph} {digits}")
+}
+
+/// Full redraw of the interactive screen. `out` is typically stdout in
+/// raw mode wrapped in a BufWriter; tests pass a `Vec<u8>`.
+pub fn draw<W: Write>(state: &State, out: &mut W) -> anyhow::Result<()> {
+    out.queue(Hide)?;
+    out.queue(MoveTo(0, 0))?;
+    out.queue(Clear(ClearType::CurrentLine))?;
+    out.queue(Print(input_row(state)))?;
+
+    // Page body starts at row 1. Render each line individually with an
+    // explicit MoveTo so raw mode's missing carriage-return doesn't leave
+    // the cursor drifting right.
+    for (i, line) in state.lines.iter().enumerate() {
+        out.queue(MoveTo(0, (i as u16) + 1))?;
+        out.queue(Clear(ClearType::CurrentLine))?;
+        let slice = std::slice::from_ref(line);
+        crate::render::render_colored(slice, true, out)?;
+    }
+
+    // Hint bar on row 26.
+    out.queue(MoveTo(0, 26))?;
+    out.queue(Clear(ClearType::CurrentLine))?;
+    let hint = state
+        .status
+        .as_deref()
+        .unwrap_or("↑↓ links · Enter open · 0-9 jump · Esc quit");
+    out.queue(Print(hint))?;
+
+    // Put the cursor back at the next typing position in the input zone.
+    let cursor_col = 2 + (state.input_buf.len() as u16);
+    out.queue(MoveTo(cursor_col, 0))?;
+    out.queue(Show)?;
+    out.flush()?;
+    Ok(())
 }
 
 /// Entry point for interactive mode. Renders the initial page and runs the
@@ -533,5 +593,40 @@ mod tests {
         let mut s = State::initial(100);
         tick(&mut s);
         assert!(matches!(s.fetch, FetchState::Idle));
+    }
+
+    #[test]
+    fn draw_emits_idle_input_row_with_current_page() {
+        let mut s = State::initial(100);
+        s.install_page(page_with_links());
+        let mut buf: Vec<u8> = Vec::new();
+        draw(&s, &mut buf).expect("draw");
+        let out = String::from_utf8_lossy(&buf);
+        assert!(out.contains("  100"), "idle input row missing: {out:?}");
+    }
+
+    #[test]
+    fn draw_emits_spinner_glyph_while_fetching() {
+        let mut s = State::initial(100);
+        s.install_page(page_with_links());
+        s.fetch = FetchState::Fetching {
+            target_page: 200,
+            frame: 0,
+        };
+        let mut buf: Vec<u8> = Vec::new();
+        draw(&s, &mut buf).expect("draw");
+        let out = String::from_utf8_lossy(&buf);
+        assert!(out.contains(SPINNER[0]), "spinner glyph missing: {out:?}");
+    }
+
+    #[test]
+    fn draw_shows_input_buf_padded_with_underscores() {
+        let mut s = State::initial(100);
+        s.install_page(page_with_links());
+        s.input_buf = "3".to_string();
+        let mut buf: Vec<u8> = Vec::new();
+        draw(&s, &mut buf).expect("draw");
+        let out = String::from_utf8_lossy(&buf);
+        assert!(out.contains("3__"), "padded input missing: {out:?}");
     }
 }
