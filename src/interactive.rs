@@ -9,12 +9,11 @@ use crossterm::event::{KeyCode, KeyEvent};
 
 use crate::parse::{ColoredPage, Line};
 
-// Used by `tick` (next task) and the event loop. `#[allow(dead_code)]` is
-// removed once those land.
-#[allow(dead_code)]
 pub(crate) const SPINNER: &[char] = &[
     '⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏',
 ];
+/// Event-loop poll timeout (also the spinner cadence). Used by the
+/// event loop landing in Task 10.
 #[allow(dead_code)]
 pub(crate) const SPINNER_INTERVAL: Duration = Duration::from_millis(80);
 
@@ -230,6 +229,15 @@ pub fn scan_links(lines: &[Line]) -> Vec<Link> {
         }
     }
     out
+}
+
+/// Advance the spinner frame by one (wrapping at `SPINNER.len()`) when
+/// a fetch is in flight. No-op otherwise. Called by the event loop
+/// every `SPINNER_INTERVAL` (80 ms).
+pub fn tick(state: &mut State) {
+    if let FetchState::Fetching { frame, .. } = &mut state.fetch {
+        *frame = (*frame + 1) % SPINNER.len();
+    }
 }
 
 /// Entry point for interactive mode. Renders the initial page and runs the
@@ -488,5 +496,42 @@ mod tests {
         };
         let action = handle_key(&mut s, key(KeyCode::Enter));
         assert_eq!(action, Action::None);
+    }
+
+    #[test]
+    fn tick_advances_frame_while_fetching() {
+        let mut s = State::initial(100);
+        s.fetch = FetchState::Fetching {
+            target_page: 200,
+            frame: 0,
+        };
+        tick(&mut s);
+        if let FetchState::Fetching { frame, .. } = s.fetch {
+            assert_eq!(frame, 1);
+        } else {
+            panic!("expected Fetching");
+        }
+    }
+
+    #[test]
+    fn tick_wraps_frame_at_spinner_len() {
+        let mut s = State::initial(100);
+        s.fetch = FetchState::Fetching {
+            target_page: 200,
+            frame: SPINNER.len() - 1,
+        };
+        tick(&mut s);
+        if let FetchState::Fetching { frame, .. } = s.fetch {
+            assert_eq!(frame, 0);
+        } else {
+            panic!("expected Fetching");
+        }
+    }
+
+    #[test]
+    fn tick_is_noop_while_idle() {
+        let mut s = State::initial(100);
+        tick(&mut s);
+        assert!(matches!(s.fetch, FetchState::Idle));
     }
 }
