@@ -9,7 +9,7 @@ use std::time::Duration;
 use anyhow::{Context, Result, anyhow};
 use crossterm::{
     QueueableCommand,
-    cursor::{Hide, MoveTo, Show},
+    cursor::MoveTo,
     event::{Event, KeyCode, KeyEvent, KeyEventKind, poll, read},
     execute,
     style::Print,
@@ -18,6 +18,7 @@ use crossterm::{
         enable_raw_mode,
     },
 };
+use owo_colors::OwoColorize;
 
 use crate::parse::{ColoredPage, Line};
 
@@ -172,42 +173,48 @@ pub struct Link {
 /// Scan the rendered page for three-digit page references that are
 /// flanked by spaces (or line edges) on both sides. Mosaic cells count
 /// as spaces — they never participate in a link.
+///
+/// Iterates by char (not byte) so non-ASCII text earlier on the line
+/// — Swedish å/ö/ä, copyright sigils, etc. — doesn't shift the link's
+/// `col_start` relative to the rendered grid. (A byte index over a UTF-8
+/// string overcounts the column for every multi-byte char that came
+/// before, which is what was painting the reverse-video highlight off
+/// by one or more cells.)
 pub fn scan_links(lines: &[Line]) -> Vec<Link> {
     let mut out = Vec::new();
     for (row, line) in lines.iter().enumerate() {
-        // Flatten cells into a single string. Mosaic cells contribute a
-        // single space placeholder so they form a link boundary.
-        let mut flat = String::new();
+        // Flatten cells into a single char vector. Mosaic cells contribute
+        // a single space placeholder so they form a link boundary.
+        let mut chars: Vec<char> = Vec::new();
         for cell in &line.cells {
             if cell.is_mosaic() {
-                flat.push(' ');
+                chars.push(' ');
             } else {
-                flat.push_str(&cell.text);
+                chars.extend(cell.text.chars());
             }
         }
-        let bytes = flat.as_bytes();
         let mut i = 0;
-        while i + 3 <= bytes.len() {
-            if !(bytes[i].is_ascii_digit()
-                && bytes[i + 1].is_ascii_digit()
-                && bytes[i + 2].is_ascii_digit())
+        while i + 3 <= chars.len() {
+            if !(chars[i].is_ascii_digit()
+                && chars[i + 1].is_ascii_digit()
+                && chars[i + 2].is_ascii_digit())
             {
                 i += 1;
                 continue;
             }
-            let prev_is_digit = i > 0 && bytes[i - 1].is_ascii_digit();
-            let next_is_digit = i + 3 < bytes.len() && bytes[i + 3].is_ascii_digit();
+            let prev_is_digit = i > 0 && chars[i - 1].is_ascii_digit();
+            let next_is_digit = i + 3 < chars.len() && chars[i + 3].is_ascii_digit();
             if prev_is_digit || next_is_digit {
                 // Part of a longer digit run; skip past all the digits.
                 let mut j = i;
-                while j < bytes.len() && bytes[j].is_ascii_digit() {
+                while j < chars.len() && chars[j].is_ascii_digit() {
                     j += 1;
                 }
                 i = j;
                 continue;
             }
-            let left_boundary = i == 0 || bytes[i - 1] == b' ';
-            let right_boundary = i + 3 == bytes.len() || bytes[i + 3] == b' ';
+            let left_boundary = i == 0 || chars[i - 1] == ' ';
+            let right_boundary = i + 3 == chars.len() || chars[i + 3] == ' ';
             if !(left_boundary && right_boundary) {
                 i += 1;
                 continue;
@@ -216,15 +223,13 @@ pub fn scan_links(lines: &[Line]) -> Vec<Link> {
             // cells when they exist.
             let col_start = if i > 0 { (i as u16) - 1 } else { 0 };
             let after_digits = i + 3;
-            let col_end = if after_digits < bytes.len() {
+            let col_end = if after_digits < chars.len() {
                 (after_digits as u16) + 1
             } else {
                 after_digits as u16
             };
-            let target: u16 = std::str::from_utf8(&bytes[i..i + 3])
-                .ok()
-                .and_then(|s| s.parse().ok())
-                .unwrap_or(0);
+            let target_str: String = chars[i..i + 3].iter().collect();
+            let target: u16 = target_str.parse().unwrap_or(0);
             out.push(Link {
                 row: row as u16,
                 col_start,
@@ -247,7 +252,19 @@ pub fn tick(state: &mut State) {
     }
 }
 
-/// Compose the input-row string. `frame` is `Some(glyph)` while fetching.
+/// Full width (in cells) the chrome rows paint with the page's black bg
+/// so they read as part of the same visual surface. Matches the teletext
+/// page's 40 data cells + 1 right-edge frame cell.
+const CHROME_WIDTH: usize = 41;
+
+/// Compose the input-row content. Layout shifted one cell right so col 0
+/// is a margin matching the visual breathing room around the page:
+///
+/// ```text
+///   col: 0 1 2 3 4 5
+///        _ ⠏ _ 1 0 0    (fetching)
+///        _ _ _ 1 0 0    (idle)
+/// ```
 fn input_row(state: &State) -> String {
     let glyph = match state.fetch {
         FetchState::Fetching { frame, .. } => SPINNER[frame % SPINNER.len()],
@@ -262,20 +279,35 @@ fn input_row(state: &State) -> String {
         }
         s
     };
-    format!("{glyph} {digits}")
+    format!(" {glyph} {digits}")
+}
+
+/// Paint a single chrome row (input or hint) with the page's white-on-black
+/// colors, padded out to `CHROME_WIDTH` so the row visually blends with
+/// the page below it.
+fn paint_chrome_row<W: Write>(out: &mut W, row: u16, content: &str) -> anyhow::Result<()> {
+    out.queue(MoveTo(0, row))?;
+    out.queue(Clear(ClearType::CurrentLine))?;
+    let visible: String = content.chars().take(CHROME_WIDTH).collect();
+    let visible_width = visible.chars().count();
+    let pad = CHROME_WIDTH.saturating_sub(visible_width);
+    let line = format!("{visible}{:pad$}", "", pad = pad);
+    let styled = line
+        .truecolor(255, 255, 255)
+        .on_truecolor(0, 0, 0)
+        .to_string();
+    out.queue(Print(styled))?;
+    Ok(())
 }
 
 /// Full redraw of the interactive screen. `out` is typically stdout in
 /// raw mode wrapped in a BufWriter; tests pass a `Vec<u8>`.
 pub fn draw<W: Write>(state: &State, out: &mut W) -> anyhow::Result<()> {
-    out.queue(Hide)?;
-    out.queue(MoveTo(0, 0))?;
-    out.queue(Clear(ClearType::CurrentLine))?;
-    out.queue(Print(input_row(state)))?;
+    // Row 0: input field. Chrome row, white-on-black to match the page.
+    paint_chrome_row(out, 0, &input_row(state))?;
 
-    // Page body starts at row 1. Render each line individually with an
-    // explicit MoveTo so raw mode's missing carriage-return doesn't leave
-    // the cursor drifting right.
+    // Rows 1..=N: page body. Each row gets an explicit MoveTo so raw
+    // mode's missing carriage-return doesn't leave the cursor drifting.
     for (i, line) in state.lines.iter().enumerate() {
         out.queue(MoveTo(0, (i as u16) + 1))?;
         out.queue(Clear(ClearType::CurrentLine))?;
@@ -299,19 +331,18 @@ pub fn draw<W: Write>(state: &State, out: &mut W) -> anyhow::Result<()> {
         }
     }
 
-    // Hint bar on row 26.
-    out.queue(MoveTo(0, 26))?;
-    out.queue(Clear(ClearType::CurrentLine))?;
-    let hint = state
-        .status
-        .as_deref()
-        .unwrap_or("↑↓ links · Enter open · 0-9 jump · Esc quit");
-    out.queue(Print(hint))?;
+    // Hint bar: placed immediately below the last page row so there's no
+    // dead space for short pages. Also a chrome row.
+    let hint_row = 1 + state.lines.len() as u16;
+    let hint = state.status.as_deref().unwrap_or("↑↓ · Enter · Esc quit");
+    paint_chrome_row(out, hint_row, hint)?;
 
-    // Put the cursor back at the next typing position in the input zone.
-    let cursor_col = 2 + (state.input_buf.len() as u16);
+    // Park the system cursor at the next typing position in the input
+    // zone. No Hide/Show pair — the terminal's native cursor (block, bar,
+    // underline, whatever the user has configured) stays visible
+    // throughout.
+    let cursor_col = 3 + (state.input_buf.len() as u16);
     out.queue(MoveTo(cursor_col, 0))?;
-    out.queue(Show)?;
     out.flush()?;
     Ok(())
 }
@@ -568,6 +599,21 @@ mod tests {
         assert_eq!(links.len(), 1);
         assert_eq!(links[0].col_start, 3);
         assert_eq!(links[0].col_len, 4);
+    }
+
+    #[test]
+    fn scan_links_columns_are_char_positions_not_byte_positions() {
+        // Regression: Swedish 'ö' is 2 bytes in UTF-8. A byte-indexed
+        // scanner reports col_start = 4 (the leading space byte position)
+        // for the link " 300 ", which paints the reverse-video highlight
+        // one cell to the right of where the digits actually render.
+        let lines = vec![line("Höj 300 hi")];
+        let links = scan_links(&lines);
+        assert_eq!(links.len(), 1);
+        assert_eq!(links[0].target, 300);
+        // 'H'=col 0, 'ö'=col 1, 'j'=col 2, ' '=col 3, '3'=col 4 → col_start = 3
+        assert_eq!(links[0].col_start, 3);
+        assert_eq!(links[0].col_len, 5);
     }
 
     #[test]
