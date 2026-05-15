@@ -3,10 +3,15 @@
 Render SVT Text-TV pages in your terminal.
 
 ```bash
-texttv 300              # Sport — auto-detects the best graphics protocol
-texttv 100 --mode text  # Plain text, no graphics
+texttv 300              # Sport — prints the page text (default)
+texttv 300 --mode auto  # Render the GIF page using the best graphics protocol
 texttv --list           # Index of well-known section pages
 ```
+
+By default `texttv` prints the actual text content extracted from SVT's
+accessibility data — faithful to the 40-column teletext layout and grep-
+friendly. The original page GIF is also available as a bitmap render
+(`--mode auto/kitty/iterm/blocks`), capped at 60 terminal cells wide.
 
 ## Install
 
@@ -36,7 +41,7 @@ Run `texttv 300 --debug-protocol` to print the detected protocol (`kitty`,
 
 | Flag                              | Meaning                                                |
 | --------------------------------- | ------------------------------------------------------ |
-| `--mode {auto,kitty,iterm,blocks,text}` | Force a rendering path. Defaults to `auto`.     |
+| `--mode {auto,kitty,iterm,blocks,text}` | Pick the rendering path. Defaults to `text`. |
 | `--no-color`                      | Disable ANSI color in text mode.                       |
 | `--list`                          | Print the section index and exit.                      |
 | `--debug-protocol`                | Print the detected protocol on stderr before drawing.  |
@@ -59,10 +64,11 @@ it detects this situation.
 
 ## Auto-degrade
 
-`texttv` automatically switches to `--mode text` when:
-
-- stdout is not a TTY (piped or redirected) — so `texttv 300 | grep` works
-- `NO_COLOR=1` is set — text is still printed, just without color
+`texttv` is text-first; piping just works (`texttv 300 | grep`). If you
+explicitly ask for image rendering (`--mode auto/kitty/iterm/blocks`) and
+stdout is piped, `--mode auto` still degrades to text — but the forced
+graphics modes write their escape sequences regardless, since that's what
+you asked for. `NO_COLOR=1` disables ANSI color in text mode.
 
 ## Exit codes
 

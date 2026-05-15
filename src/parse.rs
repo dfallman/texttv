@@ -72,20 +72,23 @@ fn extract_text(doc: &Html) -> String {
 }
 
 fn collect_text(node: scraper::ElementRef<'_>) -> String {
+    let raw: String = node.text().collect();
     let mut out = String::new();
-    for chunk in node.text() {
-        let trimmed = chunk.trim_end_matches(['\r', '\n']);
-        // Keep internal spacing because teletext rows are space-padded; only drop
-        // empty lines so we don't accumulate huge blank runs.
-        if trimmed.chars().all(char::is_whitespace) {
-            if !out.ends_with('\n') && !out.is_empty() {
+    let mut prev_blank = false;
+    let mut any_seen = false;
+    for line in raw.lines() {
+        let stripped = line.trim_end();
+        let is_blank = stripped.chars().all(char::is_whitespace);
+        if is_blank {
+            if any_seen && !prev_blank {
                 out.push('\n');
+                prev_blank = true;
             }
-            continue;
-        }
-        out.push_str(trimmed);
-        if !trimmed.ends_with('\n') {
+        } else {
+            out.push_str(stripped);
             out.push('\n');
+            prev_blank = false;
+            any_seen = true;
         }
     }
     out.trim_end().to_string()
