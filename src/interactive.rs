@@ -1,17 +1,20 @@
 //! In-terminal interactive page browser. See
 //! `docs/superpowers/specs/2026-05-15-interactive-mode-design.md`.
 
-use std::io::Write;
+use std::io::{IsTerminal, Write, stdout};
 use std::sync::mpsc::Receiver;
 use std::time::Duration;
 
-use anyhow::Result;
+use anyhow::{Context, Result, anyhow};
 use crossterm::{
-    QueueableCommand,
+    QueueableCommand, execute,
     cursor::{Hide, MoveTo, Show},
-    event::{KeyCode, KeyEvent},
+    event::{Event, KeyCode, KeyEvent, KeyEventKind, read},
     style::Print,
-    terminal::{Clear, ClearType},
+    terminal::{
+        Clear, ClearType, EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode,
+        enable_raw_mode,
+    },
 };
 
 use crate::parse::{ColoredPage, Line};
@@ -346,11 +349,74 @@ fn visible_chars_at(line: &Line, col_start: u16, col_len: u16) -> String {
     out
 }
 
-/// Entry point for interactive mode. Renders the initial page and runs the
-/// event loop until the user presses Esc.
-pub fn run(_initial_page: u16) -> Result<()> {
-    // Filled in over the following tasks.
+/// Entry point for interactive mode. Sets up raw mode + the alt screen,
+/// renders the initial page, and runs the event loop until the user
+/// presses Esc.
+pub fn run(initial_page: u16) -> Result<()> {
+    // Refuse if stdout isn't a terminal — interactive emits escape codes
+    // that don't belong in pipes or files.
+    if !stdout().is_terminal() {
+        return Err(anyhow!("--interactive requires a terminal"));
+    }
+
+    let mut stdout = stdout();
+    enable_raw_mode().context("entering raw mode")?;
+    execute!(stdout, EnterAlternateScreen).context("entering alt screen")?;
+
+    let result = run_inner(initial_page, &mut stdout);
+
+    // Always restore terminal state, even on error.
+    let _ = execute!(stdout, LeaveAlternateScreen);
+    let _ = disable_raw_mode();
+
+    result
+}
+
+fn run_inner<W: Write>(initial_page: u16, out: &mut W) -> Result<()> {
+    let mut state = State::initial(initial_page);
+
+    // Initial load is synchronous (we don't have the spinner yet).
+    load_into_state(&mut state, initial_page);
+    draw(&state, out)?;
+
+    loop {
+        let ev = read().context("reading terminal event")?;
+        match ev {
+            Event::Key(k) if k.kind == KeyEventKind::Press => {
+                match handle_key(&mut state, k) {
+                    Action::None => {}
+                    Action::Quit => break,
+                    Action::StartFetch(page) => {
+                        load_into_state(&mut state, page);
+                    }
+                }
+            }
+            Event::Resize(_, _) => {} // just redraw below
+            _ => {}
+        }
+        draw(&state, out)?;
+    }
     Ok(())
+}
+
+/// Synchronous fetch + parse + mosaic prefetch on the main thread. Updates
+/// `state.lines` / `state.links` / `state.selected` on success; sets a
+/// status message on failure. Replaced by an off-thread version in
+/// the next task.
+fn load_into_state(state: &mut State, page: u16) {
+    let result = crate::fetch::fetch_texttv_nu(page)
+        .and_then(|json| crate::parse::parse_texttv_nu(&json, page));
+    match result {
+        Ok(cp) => {
+            crate::mosaic::prefetch_page(&cp);
+            state.install_page(cp);
+        }
+        Err(e) => {
+            state.status = Some(format!("Error: {e:#}"));
+            state.input_buf.clear();
+            state.fetch = FetchState::Idle;
+        }
+    }
 }
 
 #[cfg(test)]
