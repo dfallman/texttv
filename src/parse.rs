@@ -154,7 +154,13 @@ pub struct Line {
 #[derive(Debug)]
 pub struct ColoredPage {
     pub page_no: u16,
+    /// First subpage's lines. Same as `subpages[0]` — kept for batch-CLI
+    /// callers that don't care about multi-page rotation.
     pub lines: Vec<Line>,
+    /// All subpages parsed from texttv.nu's `content[]` array. Most pages
+    /// have a single entry; multi-page pages (the `XXXf` indicator) have
+    /// 2+ entries representing the rotating subpages.
+    pub subpages: Vec<Vec<Line>>,
     /// content_plain from the JSON, used when colors are disabled.
     pub plain: String,
 }
@@ -165,21 +171,31 @@ pub fn parse_texttv_nu(json: &str, page_no: u16) -> Result<ColoredPage> {
     let entry = v
         .get(0)
         .ok_or_else(|| anyhow!("page {page_no} not available (empty texttv.nu response)"))?;
-    let content_html = entry
+    let content_array = entry
         .get("content")
-        .and_then(|c| c.get(0))
-        .and_then(|s| s.as_str())
-        .ok_or_else(|| anyhow!("page {page_no}: missing content[0] in texttv.nu JSON"))?;
-    let lines = dedupe_overflow(parse_colored_html(content_html));
-    if lines.is_empty() {
+        .and_then(|c| c.as_array())
+        .ok_or_else(|| anyhow!("page {page_no}: missing content[] in texttv.nu JSON"))?;
+
+    let mut subpages: Vec<Vec<Line>> = Vec::with_capacity(content_array.len());
+    for item in content_array {
+        if let Some(html) = item.as_str() {
+            let lines = dedupe_overflow(parse_colored_html(html));
+            if !lines.is_empty() {
+                subpages.push(lines);
+            }
+        }
+    }
+    if subpages.is_empty() {
         return Err(anyhow!("page {page_no} not available (no lines parsed)"));
     }
-    // texttv.nu sometimes omits content_plain — derive it from the parsed lines
-    // so the --no-color path always has something to print.
-    let plain = derive_plain(&lines);
+    // texttv.nu sometimes omits content_plain — derive it from the first
+    // subpage so the --no-color path always has something to print.
+    let plain = derive_plain(&subpages[0]);
+    let lines = subpages[0].clone();
     Ok(ColoredPage {
         page_no,
         lines,
+        subpages,
         plain,
     })
 }

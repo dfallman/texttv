@@ -36,6 +36,9 @@ pub struct State {
     pub current_page: u16,
     pub input_buf: String,
     pub lines: Vec<Line>,
+    /// All subpages for the current page. `lines == subpages[subpage_idx]`.
+    pub subpages: Vec<Vec<Line>>,
+    pub subpage_idx: usize,
     pub links: Vec<Link>,
     pub selected: Option<usize>,
     pub fetch: FetchState,
@@ -53,6 +56,8 @@ impl State {
             current_page: page,
             input_buf: String::new(),
             lines: Vec::new(),
+            subpages: Vec::new(),
+            subpage_idx: 0,
             links: Vec::new(),
             selected: None,
             fetch: FetchState::Idle,
@@ -61,12 +66,20 @@ impl State {
         }
     }
 
-    /// Install a freshly-parsed page: replace `lines`, rescan links, reset
-    /// selection to the first link (if any), clear fetch state + buffer.
+    /// Install a freshly-parsed page: copy in all subpages, render the
+    /// first one, rescan in-page links, append subpage selector links
+    /// (when there's more than one subpage), seed selection.
     pub fn install_page(&mut self, page: ColoredPage) {
         self.current_page = page.page_no;
-        self.lines = page.lines;
-        self.links = scan_links(&self.lines);
+        self.subpages = page.subpages;
+        if self.subpages.is_empty() {
+            // Defensive: parse_texttv_nu should never produce this, but
+            // the type allows it.
+            self.subpages.push(page.lines);
+        }
+        self.subpage_idx = 0;
+        self.lines = self.subpages[0].clone();
+        self.rebuild_links();
         self.selected = if self.links.is_empty() { None } else { Some(0) };
         self.fetch = FetchState::Idle;
         self.pending_rx = None;
@@ -80,12 +93,52 @@ impl State {
     pub fn install_placeholder(&mut self, page: u16) {
         self.current_page = page;
         self.lines = placeholder_lines();
+        self.subpages = vec![self.lines.clone()];
+        self.subpage_idx = 0;
         self.links = Vec::new();
         self.selected = None;
         self.fetch = FetchState::Idle;
         self.pending_rx = None;
         self.input_buf.clear();
         self.status = None;
+    }
+
+    /// Switch to a different subpage (no fetch — subpages are already
+    /// loaded). Re-renders `lines`, rebuilds `links`, and re-homes the
+    /// cursor on the just-activated subpage indicator so the user can
+    /// continue cycling.
+    pub fn switch_subpage(&mut self, new_idx: usize) {
+        if new_idx >= self.subpages.len() || new_idx == self.subpage_idx {
+            return;
+        }
+        self.subpage_idx = new_idx;
+        self.lines = self.subpages[new_idx].clone();
+        self.rebuild_links();
+        self.selected = self
+            .links
+            .iter()
+            .position(|l| l.kind == LinkKind::Subpage && l.target as usize == new_idx);
+    }
+
+    fn rebuild_links(&mut self) {
+        let mut links: Vec<Link> = scan_links(&self.lines);
+        // Filter out links on row 0 — that's the input-overlay area, and a
+        // link there would either be wiped by the overlay (cols 0..6) or
+        // clash with it (cols >= 6).
+        links.retain(|l| l.row != 0);
+        if self.subpages.len() > 1 {
+            for i in 0..self.subpages.len() {
+                links.push(Link {
+                    row: PAGE_HEIGHT_MAX,
+                    col_start: 0,
+                    col_len: 0,
+                    kind: LinkKind::Subpage,
+                    target: i as u16,
+                    followable: true,
+                });
+            }
+        }
+        self.links = links;
     }
 }
 
@@ -204,14 +257,23 @@ pub fn handle_key(state: &mut State, ev: KeyEvent) -> Action {
         }
         KeyCode::Enter => {
             if let Some(sel) = state.selected
-                && let Some(link) = state.links.get(sel)
+                && let Some(link) = state.links.get(sel).cloned()
             {
-                if link.followable {
-                    state.input_buf.clear();
-                    Action::StartFetch(link.target)
-                } else {
-                    state.status = Some(format!("Error: page {} not in 100..=999", link.target));
-                    Action::None
+                match link.kind {
+                    LinkKind::Page => {
+                        if link.followable {
+                            state.input_buf.clear();
+                            Action::StartFetch(link.target)
+                        } else {
+                            state.status =
+                                Some(format!("Error: page {} not in 100..=999", link.target));
+                            Action::None
+                        }
+                    }
+                    LinkKind::Subpage => {
+                        state.switch_subpage(link.target as usize);
+                        Action::None
+                    }
                 }
             } else {
                 Action::None
@@ -221,19 +283,36 @@ pub fn handle_key(state: &mut State, ev: KeyEvent) -> Action {
     }
 }
 
-/// A three-digit page reference scanned out of a rendered teletext page.
+/// Distinguishes between links that load another page (the canonical
+/// 3-digit references scanned from page content) and the subpage
+/// selectors rendered in the hint bar for multi-page pages.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LinkKind {
+    /// Load a different page via fetch. `Link::target` is the page number.
+    Page,
+    /// Switch the local subpage index (no fetch). `Link::target` is the
+    /// 0-based subpage index. `col_start` / `col_len` are unused — the
+    /// hint-bar render path positions and inverts these inline.
+    Subpage,
+}
+
+/// A selectable thing on the page. Page links live in the page body;
+/// subpage selectors live in the hint bar.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Link {
-    /// 0-based row within the page body (i.e. excluding the input row).
+    /// 0-based row. For `Page` kind: page body row. For `Subpage`: the
+    /// hint-bar row (`PAGE_HEIGHT_MAX`).
     pub row: u16,
-    /// 0-based column of the leading space cell.
+    /// 0-based column of the leading cell (`Page` only — unused for
+    /// `Subpage`).
     pub col_start: u16,
-    /// 4 (no leading space at row start/end) or 5 (full ` XXX ` run).
+    /// Highlight extent in cells (`Page` only — unused for `Subpage`).
     pub col_len: u16,
-    /// The 3-digit number. 0..=999.
+    pub kind: LinkKind,
+    /// `Page`: the 3-digit page number. `Subpage`: 0-based subpage index.
     pub target: u16,
-    /// `false` when `target < 100`. ↑↓ still land on this link; Enter
-    /// is a no-op + status flash.
+    /// `false` when a `Page` link's target < 100. Always `true` for
+    /// `Subpage`. ↑↓ still land on unfollowable links; Enter is a no-op.
     pub followable: bool,
 }
 
@@ -326,6 +405,7 @@ pub fn scan_links(lines: &[Line]) -> Vec<Link> {
                 row: row as u16,
                 col_start,
                 col_len,
+                kind: LinkKind::Page,
                 target,
                 followable: target >= 100,
             });
@@ -378,6 +458,57 @@ fn input_row(state: &State) -> String {
     format!(" {glyph} {digits}")
 }
 
+/// Compose the multi-page subpage selector "Page: >1< 2 3 4 …", centered
+/// within `CHROME_WIDTH`, styled white-on-black, with the selected
+/// indicator (if any) wrapped in reverse-video escapes. The
+/// `>active<` brackets mark which subpage is currently rendered; the
+/// reverse-video marks where the user's selection cursor is.
+fn compose_subpage_hint(active_idx: usize, total: usize, selected_idx: Option<usize>) -> String {
+    // Build the plain text first to figure out the centering offset.
+    let mut plain = String::from("Page: ");
+    let mut labels: Vec<String> = Vec::with_capacity(total);
+    for i in 0..total {
+        let label = if i == active_idx {
+            format!(">{}<", i + 1)
+        } else {
+            format!("{}", i + 1)
+        };
+        plain.push_str(&label);
+        labels.push(label);
+        if i + 1 < total {
+            plain.push(' ');
+        }
+    }
+    let plain_len = plain.chars().count();
+    let pad = CHROME_WIDTH.saturating_sub(plain_len);
+    let left_pad = pad / 2;
+    let right_pad = pad - left_pad;
+
+    // Now re-emit the content with inline `\x1b[7m`/`\x1b[27m` around the
+    // selected indicator. The whole row is wrapped in white-on-black so
+    // truecolor + the inversion compose into a black-on-white block.
+    let mut inner = String::with_capacity(CHROME_WIDTH * 4);
+    inner.push_str(&" ".repeat(left_pad));
+    inner.push_str("Page: ");
+    for (i, label) in labels.iter().enumerate() {
+        if Some(i) == selected_idx {
+            inner.push_str("\x1b[7m");
+            inner.push_str(label);
+            inner.push_str("\x1b[27m");
+        } else {
+            inner.push_str(label);
+        }
+        if i + 1 < total {
+            inner.push(' ');
+        }
+    }
+    inner.push_str(&" ".repeat(right_pad));
+    inner
+        .truecolor(255, 255, 255)
+        .on_truecolor(0, 0, 0)
+        .to_string()
+}
+
 /// Pad `text` to `width` cells by centering it, with the surplus split
 /// roughly evenly between left and right (left gets the lesser half on
 /// odd remainders). Used for the hint bar.
@@ -425,11 +556,12 @@ pub fn draw<W: Write>(state: &State, out: &mut W) -> anyhow::Result<()> {
         crate::render::render_colored(slice, true, out)?;
     }
 
-    // Selected-link highlight: reverse-video overlay. Row is 0-based
-    // within the page body, which now matches absolute terminal rows
-    // since the page starts at row 0.
+    // Selected-link highlight for in-page `Page` links — reverse-video
+    // overlay at the link's row/col. Subpage selectors are inverted
+    // inline by the hint-bar render path below, so we skip them here.
     if let Some(sel) = state.selected
         && let Some(link) = state.links.get(sel)
+        && link.kind == LinkKind::Page
     {
         let row_idx = link.row as usize;
         if let Some(line) = state.lines.get(row_idx) {
@@ -452,16 +584,33 @@ pub fn draw<W: Write>(state: &State, out: &mut W) -> anyhow::Result<()> {
     out.queue(Print(styled))?;
 
     // Hint at row `PAGE_HEIGHT_MAX` (just below the page area), centered
-    // within `CHROME_WIDTH`. Sits on the black canvas so short pages get
-    // a clean dark band between the page content and the hint.
+    // within `CHROME_WIDTH`. Three cases:
+    //   1. Status message present → show it (priority).
+    //   2. Multi-page → subpage selector "Page: >1< 2 3 4 …" with the
+    //      selected indicator inverted inline.
+    //   3. Otherwise → the static "↑↓ · Enter · Esc quit" hint.
     out.queue(MoveTo(0, PAGE_HEIGHT_MAX))?;
-    let hint_text = state.status.as_deref().unwrap_or("↑↓ · Enter · Esc quit");
-    let centered = center_padded(hint_text, CHROME_WIDTH);
-    let styled = centered
-        .truecolor(255, 255, 255)
-        .on_truecolor(0, 0, 0)
-        .to_string();
-    out.queue(Print(styled))?;
+    let hint_styled = if let Some(status) = state.status.as_deref() {
+        let centered = center_padded(status, CHROME_WIDTH);
+        centered
+            .truecolor(255, 255, 255)
+            .on_truecolor(0, 0, 0)
+            .to_string()
+    } else if state.subpages.len() > 1 {
+        let selected_subpage = state
+            .selected
+            .and_then(|s| state.links.get(s))
+            .filter(|l| l.kind == LinkKind::Subpage)
+            .map(|l| l.target as usize);
+        compose_subpage_hint(state.subpage_idx, state.subpages.len(), selected_subpage)
+    } else {
+        let centered = center_padded("↑↓ · Enter · Esc quit", CHROME_WIDTH);
+        centered
+            .truecolor(255, 255, 255)
+            .on_truecolor(0, 0, 0)
+            .to_string()
+    };
+    out.queue(Print(hint_styled))?;
 
     // Park the system cursor at the next typing position in the input
     // zone. No Hide/Show pair — the terminal's native cursor stays visible
@@ -661,12 +810,28 @@ mod tests {
         KeyEvent::new(code, KeyModifiers::empty())
     }
 
-    fn page_with_links() -> ColoredPage {
+    fn make_page(page_no: u16, lines: Vec<Line>) -> ColoredPage {
         ColoredPage {
-            page_no: 100,
-            lines: vec![line(" 300  400 ")],
+            page_no,
+            lines: lines.clone(),
+            subpages: vec![lines],
             plain: String::new(),
         }
+    }
+
+    fn make_multipage(page_no: u16, subpages: Vec<Vec<Line>>) -> ColoredPage {
+        ColoredPage {
+            page_no,
+            lines: subpages[0].clone(),
+            subpages,
+            plain: String::new(),
+        }
+    }
+
+    fn page_with_links() -> ColoredPage {
+        // Row 0 is reserved for the input overlay; put the links on row 1
+        // so they survive `State::rebuild_links` filtering.
+        make_page(100, vec![line(" "), line(" 300  400 ")])
     }
 
     #[test]
@@ -930,11 +1095,8 @@ mod tests {
     #[test]
     fn enter_on_unfollowable_link_is_noop_with_status() {
         let mut s = State::initial(100);
-        s.install_page(ColoredPage {
-            page_no: 100,
-            lines: vec![line(" 099 ")],
-            plain: String::new(),
-        });
+        // Row 0 is filtered out, so put the unfollowable link on row 1.
+        s.install_page(make_page(100, vec![line(" "), line(" 099 ")]));
         let action = handle_key(&mut s, key(KeyCode::Enter));
         assert_eq!(action, Action::None);
         assert!(s.status.is_some());
@@ -1032,6 +1194,106 @@ mod tests {
     #[test]
     fn center_padded_truncates_when_too_long() {
         assert_eq!(center_padded("abcdef", 3), "abc");
+    }
+
+    #[test]
+    fn install_page_with_multiple_subpages_appends_subpage_links() {
+        let mut s = State::initial(100);
+        let cp = make_multipage(
+            328,
+            vec![
+                vec![line(" "), line(" 300 ")],
+                vec![line(" "), line(" 400 ")],
+                vec![line(" "), line(" 500 ")],
+            ],
+        );
+        s.install_page(cp);
+        let subpage_count = s
+            .links
+            .iter()
+            .filter(|l| l.kind == LinkKind::Subpage)
+            .count();
+        assert_eq!(subpage_count, 3, "expected 3 subpage selectors");
+        let page_count = s.links.iter().filter(|l| l.kind == LinkKind::Page).count();
+        assert_eq!(page_count, 1, "expected 1 page link from subpage 0");
+    }
+
+    #[test]
+    fn enter_on_subpage_link_switches_active_subpage() {
+        let mut s = State::initial(100);
+        s.install_page(make_multipage(
+            328,
+            vec![
+                vec![line(" "), line(" 300 ")],
+                vec![line(" "), line(" 400 ")],
+            ],
+        ));
+        assert_eq!(s.subpage_idx, 0);
+        // Navigate to the second subpage selector. links order:
+        //   [Page(300), Subpage(0), Subpage(1)]
+        // selected starts at 0 (Page link); step ↓ twice to reach Subpage(1).
+        handle_key(&mut s, key(KeyCode::Down));
+        handle_key(&mut s, key(KeyCode::Down));
+        let sel_idx = s.selected.expect("selected should be Some");
+        assert_eq!(
+            s.links[sel_idx].kind,
+            LinkKind::Subpage,
+            "expected to land on a subpage link"
+        );
+        let action = handle_key(&mut s, key(KeyCode::Enter));
+        assert_eq!(action, Action::None);
+        assert_eq!(s.subpage_idx, 1, "subpage_idx should advance");
+        // After switching, `lines` matches the new subpage.
+        let combined: String = s
+            .lines
+            .iter()
+            .flat_map(|l| l.cells.iter().map(|c| c.text.clone()))
+            .collect();
+        assert!(
+            combined.contains(" 400 "),
+            "lines should reflect new subpage; got: {combined}"
+        );
+    }
+
+    #[test]
+    fn switch_subpage_rescans_links_for_new_content() {
+        let mut s = State::initial(100);
+        s.install_page(make_multipage(
+            328,
+            vec![
+                vec![line(" "), line(" 300 ")],
+                vec![line(" "), line(" 400  500 ")],
+            ],
+        ));
+        s.switch_subpage(1);
+        let page_targets: Vec<u16> = s
+            .links
+            .iter()
+            .filter(|l| l.kind == LinkKind::Page)
+            .map(|l| l.target)
+            .collect();
+        assert_eq!(page_targets, vec![400, 500]);
+    }
+
+    #[test]
+    fn single_subpage_pages_have_no_subpage_selectors() {
+        let mut s = State::initial(100);
+        s.install_page(make_page(100, vec![line(" "), line(" 300 ")]));
+        let has_subpage_link = s.links.iter().any(|l| l.kind == LinkKind::Subpage);
+        assert!(!has_subpage_link);
+    }
+
+    #[test]
+    fn rebuild_links_filters_row_zero() {
+        // Row 0 is the input-overlay area; links there would clash with
+        // the chrome and are filtered out.
+        let mut s = State::initial(100);
+        s.install_page(make_page(100, vec![line(" 300  400 ")]));
+        // Single-line page → all candidate links are on row 0 → filtered.
+        assert!(
+            s.links.iter().all(|l| l.kind != LinkKind::Page),
+            "row-0 page links should be filtered"
+        );
     }
 
     #[test]
@@ -1134,11 +1396,7 @@ mod tests {
     #[test]
     fn draw_skips_link_highlight_when_no_selection() {
         let mut s = State::initial(100);
-        s.install_page(ColoredPage {
-            page_no: 100,
-            lines: vec![line("hello world")],
-            plain: String::new(),
-        });
+        s.install_page(make_page(100, vec![line("hello world")]));
         assert_eq!(s.selected, None);
         let mut buf: Vec<u8> = Vec::new();
         draw(&s, &mut buf).expect("draw");
