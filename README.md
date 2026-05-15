@@ -93,7 +93,7 @@ Defaults vary by terminal. You can always override with `--mode`.
 | Kitty | image | Kitty graphics (true pixels) |
 | Ghostty | image | Kitty graphics (true pixels) |
 | WezTerm | image | iTerm2 inline (true pixels) |
-| iTerm2 | **teletext** (use `--mode auto` for the bitmap) | iTerm2 inline (true pixels) |
+| iTerm2 | image | iTerm2 inline (true pixels) |
 | Apple Terminal | teletext | half-blocks fallback |
 | Alacritty | teletext | half-blocks fallback |
 | Windows Terminal | teletext | half-blocks fallback |
