@@ -70,7 +70,7 @@ emulators can't render in a predictable fashion.
     <em>Teletext mode: pages are rendered as text</em>
 </p>
 
-3. **Image mode**, on the other hand, asks your terminal to draw the original page GIF that SVT
+2. **Image mode**, on the other hand, asks your terminal to draw the original page GIF that SVT
 itself serves. Here, you'll get pixel-perfect rendering, but you lose selectable text.
 This is the default pick for terminals with a native graphics protocol (Kitty,
 Ghostty, WezTerm, iTerm2). On other terminal emulators, you can try it via `--mode auto`. On

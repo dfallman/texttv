@@ -64,6 +64,7 @@ jobs:
           New-Item -ItemType Directory -Path $stage | Out-Null
           Copy-Item "target/${{ matrix.target }}/release/texttv.exe" $stage
           if (Test-Path README.md) { Copy-Item README.md $stage }
+          if (Test-Path LICENSE)   { Copy-Item LICENSE   $stage }
           Compress-Archive -Path $stage -DestinationPath "$stage.zip"
           echo "ASSET=$stage.zip" >> $env:GITHUB_ENV
 
