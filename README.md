@@ -97,7 +97,7 @@ texttv 300 --mode iterm          # force iTerm2 inline-image protocol
 texttv 300 --mode blocks         # force the half-block fallback
 ```
 
-**Pro tip:** if you prefer a rendering mode and size etc that's not the default for your terminal emulator, consider creating a configuration file (see below). That way your preferred settings will load automatically and you only have to type `texttv <PAGE>`.
+**Pro tip:** if you prefer a rendering mode or a size that isn't the default for your terminal emulator, consider creating a configuration file (see below).Pro tip: if you prefer a rendering mode or a size that isn't the default for your terminal emulator, consider creating a configuration file (see below). That way your preferred settings will load automatically and you'll only have to type texttv <PAGE>.
 
 ### A note on double-height headlines
 
