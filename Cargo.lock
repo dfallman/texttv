@@ -1490,7 +1490,7 @@ dependencies = [
 
 [[package]]
 name = "texttv"
-version = "0.1.6"
+version = "0.1.7"
 dependencies = [
  "anyhow",
  "base64",
