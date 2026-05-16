@@ -50,7 +50,7 @@ Use the commands `texttv` or `texttv --interactive`.
 </p>
 
 ### Single page view mode
-Outputs a single page to the terminal. Type `texttv 360` to view page 360, for example (I wonder how those Birch Leaves are going...) How the single page is rendered depends on your terminal emulator's capabilities and your settings (see below).
+Outputs a single page to the terminal. Type `texttv 360` to view page 360, for example (I wonder how those Birch Leaves are going, heard they did well this season!) How the single page is rendered depends on your terminal emulator's capabilities and your settings (see below).
 
 ## Rendering modes
 
