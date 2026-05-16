@@ -5,9 +5,9 @@ A small and fast, yet decisively over-engineered command-line parser and reader 
 While 1979 _is_ calling, it's still a properly excellent source of news. Now available
 in a terminal near you.
 
-`texttv` is written entirely in [Rust](https://rustup.rs/) and works on most platforms 
-(macOS, Windows, Linux, etc.) and most terminal emulators (such as iTerm2, Kitty, WezTerm, 
-Ghostty, etc.) 
+`texttv` is written entirely in [Rust](https://rustup.rs/) and runs on most platforms 
+(macOS, Windows, Linux, etc.) in most terminal emulators (such as iTerm2, Kitty, WezTerm, 
+Ghostty, PowerShell, Terminal.app, etc.) 
 
 ## Usage
 `texttv` is simple to use out of the box and doesn't require any particular configuration
