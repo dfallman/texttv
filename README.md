@@ -332,7 +332,7 @@ It's not going to be perfect, but you'll get the gist of it.
 
 The author of this application has been writing code for over 30 years. Lately, 
 LLM agent-enhanced coding practices have rekindled my sense of awe at what's 
-possible. This project has been built using a range of tools, including Anthropic's Claude Code (using Opus 4.7).
+possible. This project has been built using a range of tools, including Anthropic's Claude Code (using Opus 4.7), [dan](https://github.com/dfallman/dan), and vscode.
 
 Unlike some who dismiss anything touched by a coding agent as "slop," I don't 
 see it that way. To me, these tools are a way to move much faster, explore 
