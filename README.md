@@ -13,29 +13,37 @@ Ghostty, PowerShell, Terminal.app, etc.)
 `texttv` is simple to use out of the box and doesn't require any particular configuration
 in most terminals to get started. 
 
-The app has got two different modes, interactive and page view.
+The app has two different modes, _interactive_ and _single page view_.
 
 ### Interactive mode 
 This opens a Text-TV browser in the terminal and allows you to navigate the teletext pages using familiar inputs. Type the page number to go to tht page, use your arrow keys left and right to go to next/previous page, use up and down to select links on the page, and enter to select. Press `Esc` to quit.
 
-### Page view mode
-This turns `texttv` into a very CLI-y, text-based mode that displays a single page and then exits immediately. Type `texttv 360` to view page 360, for example. I wonder how those Birch Leaves are going... oh, they're not there any more?!
+Use the commands `texttv` or `texttx --interactive`.
 
+### Single page view mode
+Outputs a single page to the terminal. Type `texttv 360` to view page 360, for example (I wonder how those Birch Leaves are going...) How the single page is rendered depends on your terminal emulator's capabilities and your settings (see below).
+
+### Examples
 `texttv` is easy to use out of the box but also highly configurable, so the above is only the basic operation. Here are some
 examples of a few typical options (see below for details):
 
 ```
 texttv
-texttv 300 --mode teletext
-texttv 101 --mode iterm --size small --source svt --verbose 
 ```
 
-The first example starts texttv in the interactive mode, which allows you to navigate through pages using arrow keys and enter to select. By default, it uses the `teletext` mode.
+The first example starts `texttv` in interactive mode, which allows you to navigate through pages using numbers input, arrow keys, and `Enter` to select, `Esc` to quit.
+
+```
+texttv 300 --mode teletext
+```
 
 The second example shows page 300 but overrides the default rendering mode (see below) to `teletext` mode, which draws the page as text+ANSI.
 
-The third example enforces iTerm2's default rendering mode (image), outputs it in small
-size, enforces the source to be SVT, and shows verbose logging output in the console.
+```
+texttv 101 --mode iterm --size small --source svt --verbose 
+```
+
+The third example enforces iTerm2's default rendering mode (image), outputs it in small size, enforces the source to be SVT, and shows verbose logging output in the console.
 
 
 # Rendering modes
@@ -73,21 +81,24 @@ texttv 300 --mode iterm          # force iTerm2 inline-image protocol
 texttv 300 --mode blocks         # force the half-block fallback
 ```
 
+ 
 # Installation
 
 Make sure you have the latest version of Rust installed:
+
 ```bash
 curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 ```
 
 Then clone the repo and install:
+
 ```bash
 git clone https://github.com/dfallman/texttv
 cd texttv
 cargo install --path .
 ```
 
-Requires Rust 1.85+ (edition 2024). Use [Rustup](https://rustup.rs/) rather than your package manager to install Rust, which ensures you'll get the latest version.
+`texttv` requires at least Rust 1.85+, but the latest version is suggested. On most machines, Rust is very easy to install. Use [Rustup](https://rustup.rs/) rather than your package manager to install it though, as this ensures you'll get the latest version.
 
 ## Options
 
