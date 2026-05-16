@@ -16,6 +16,11 @@ on:
     # changed in a while.
     - cron: "0 9 * * 1"
 
+permissions:
+  contents: read
+  checks: write
+  issues: write
+
 jobs:
   cargo-audit:
     runs-on: ubuntu-latest
