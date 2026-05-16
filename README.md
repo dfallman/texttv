@@ -142,9 +142,11 @@ The third example enforces iTerm2's default rendering mode (image), outputs it i
 
 ## Options
 
+`texttv <PAGE> [options]`
+
 | Flag | Meaning |
 | --- | --- |
-| `PAGE` | The page number. Between 100 and 999. |
+| `<PAGE>` | The page number between 100 and 999 |
 | `--mode {teletext,auto,kitty,iterm,blocks}` | Rendering path. Default depends on your terminal (see the matrix below). |
 | `--size {tiny,small,medium,large,xl,full}` | Width for image modes. Default `medium` (60 cells). Ignored in teletext mode. |
 | `--source {texttv-nu,svt}` | Data source. Defaults to `texttv-nu` for teletext (it exposes the color attributes we need to reconstruct the page), `svt` for image modes. |
@@ -155,7 +157,7 @@ The third example enforces iTerm2's default rendering mode (image), outputs it i
 | `--verbose` / `-v` | Per-phase timing traces on stderr. Also enabled by `TEXTTV_TIMINGS=1`. |
 | `--help` / `--version` | Standard. |
 
-Image-mode sizing (`--size`):
+### Image-mode sizing (`--size`):
 
 | value | cells |
 | --- | --- |
@@ -166,9 +168,9 @@ Image-mode sizing (`--size`):
 | `xl` | 120 |
 | `full` | terminal width, capped at 4000 |
 
-## Terminal matrix
+## Terminal image mode matrix
 
-Defaults vary by terminal. You can always override with `--mode`.
+Defaults vary by terminal. You can always override with `--mode`. Note however that your terminal can only draw what it can draw, so even if you override the image-mode protocol with something your terminal can't handle, the fallback will be shown (usually half-blocks). If this happens, `--mode teletext` is the safest option.
 
 | Terminal | Default | Image-mode protocol |
 | --- | --- | --- |
