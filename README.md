@@ -19,7 +19,7 @@ Ghostty, Windows Terminal, Terminal.app, Alacritty, Tabby, GNOME Terminal, Konso
 `texttv` is simple to use out of the box and doesn't require any particular configuration
 in most terminals to get started. 
 
-The app has two different modes, _interactive_ and _single page view_.
+The app has two different modes, **interactive mode** (where you browse the pages) and **single page view** (where you output a single page to the terminal).
 
 ### Interactive mode 
 This opens a Text-TV browser in the terminal and allows you to navigate the teletext pages using familiar inputs. Type the page number to go to tht page, use your arrow keys left and right to go to next/previous page, use up and down to select links on the page, and enter to select. Press `Esc` to quit.
