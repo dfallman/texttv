@@ -4,7 +4,7 @@ A small and fast, yet decidedly over-engineered command-line viewer for [SVT Tex
 
 <p align="center">
 
-  <img width="800" alt="texttv in use in the terminal" src="https://github.com/user-attachments/assets/1dfe1df2-e52f-4ec9-b617-e467254157e6" />
+  <img width="800" height="1344" alt="texttv in use in the terminal" src="https://github.com/user-attachments/assets/e5f20f29-5f19-438d-9c6b-f31e51885e0a" />
 
 </p>
 
@@ -64,7 +64,13 @@ grep-able, and feels right at home in the terminal. The downside is that we lose
 minor details on the page, most notably the double-height characters that most terminal
 emulators can't render in a predictable fashion.
 
-2. **Image mode**, on the other hand, asks your terminal to draw the original page GIF that SVT
+<p align="center">
+    <img width="800" alt="texttv in use in the terminal" src="https://github.com/user-attachments/assets/1dfe1df2-e52f-4ec9-b617-e467254157e6" />
+    <br>
+    <em>Teletext mode: pages are rendered as text</em>
+</p>
+
+3. **Image mode**, on the other hand, asks your terminal to draw the original page GIF that SVT
 itself serves. Here, you'll get pixel-perfect rendering, but you lose selectable text.
 This is the default pick for terminals with a native graphics protocol (Kitty,
 Ghostty, WezTerm, iTerm2). On other terminal emulators, you can try it via `--mode auto`. On
@@ -74,7 +80,14 @@ considerably worse than the teletext text path. Unless you have a very large ter
 window, it'll look quite blurry (still pretty cool though!) So for these terminals, 
 the default is `--mode teletext`.
 
-Pick explicitly with `--mode`:
+<p align="center">
+    <img width="800" alt="texttv rednered as image" src="https://github.com/user-attachments/assets/563e2d42-a1ad-48d1-b7b1-401c4cd761a1" />
+    <br>
+    <em>Image mode: pages are rendered as images in supported terminals</em>
+</p>
+
+
+Pick your mode explicitly with `--mode`:
 
 ```bash
 texttv 300 --mode teletext       # force the text render
