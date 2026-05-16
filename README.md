@@ -5,7 +5,9 @@ A small and fast, yet decisively over-engineered command-line parser and reader 
 While 1979 _is_ calling on its UI, it's a properly excellent source of news. Now available
 in a terminal near you!
 
-<img width="1820" height="1344" alt="CleanShot 2026-05-16 at 12 02 19@2x" src="https://github.com/user-attachments/assets/1dfe1df2-e52f-4ec9-b617-e467254157e6" />
+<p align="center">
+  <img width="600" alt="textv in use in the terminal" src="https://github.com/user-attachments/assets/1dfe1df2-e52f-4ec9-b617-e467254157e6" />
+</p>
 
 `texttv` is written entirely in [Rust](https://rustup.rs/) and runs on most platforms 
 (macOS, Windows, Linux, etc.) in most terminal emulators (such as iTerm2, Kitty, WezTerm, 
