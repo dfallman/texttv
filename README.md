@@ -4,7 +4,7 @@ A small and fast, yet decidedly over-engineered command-line viewer for [SVT Tex
 
 <p align="center">
 
-  <img width="800" height="1344" alt="texttv in use in the terminal" src="https://github.com/user-attachments/assets/e5f20f29-5f19-438d-9c6b-f31e51885e0a" />
+  <img width="800" alt="texttv in use in the terminal" src="https://github.com/user-attachments/assets/e5f20f29-5f19-438d-9c6b-f31e51885e0a" />
 
 </p>
 
