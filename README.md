@@ -13,7 +13,7 @@ A small and fast, yet decidedly over-engineered command-line viewer for [SVT Tex
 
 ## Installation
 
-Make sure you have the latest version of Rust installed:
+Make sure you have the latest version of Rust installed. Use [Rustup](https://rustup.rs/) rather than your package manager to install, as this ensures you'll get the latest version.
 
 ```bash
 curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
@@ -26,8 +26,6 @@ git clone https://github.com/dfallman/texttv
 cd texttv
 cargo install --path .
 ```
-
-**Note:** `texttv` requires at least Rust 1.85+, but the latest version is suggested. On most machines, Rust is very easy to install. Use [Rustup](https://rustup.rs/) rather than your package manager to install it though, as this ensures you'll get the latest version.
 
 ## Usage
 `texttv` is simple to use out of the box and doesn't require any particular configuration
