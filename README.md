@@ -1,9 +1,6 @@
 # texttv
 
-A small and fast, yet decisively over-engineered command-line parser and reader for 
-[SVT Text-TV](https://www.svt.se/text-tv/) — Sweden's public-service teletext. 
-While 1979 _is_ calling on its UI, it's a properly excellent source of news. Now available
-in a terminal near you!
+A small and fast, yet decidedly over-engineered command-line viewer for [SVT Text-TV](https://www.svt.se/text-tv/), Swedish Television's public-service teletext. The UI might be 1979 calling, but it's a properly excellent source of news. Now available in a terminal near you.
 
 <p align="center">
 
