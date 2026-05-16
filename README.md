@@ -1,6 +1,6 @@
 # texttv
 
-A small and fast, yet decidedly over-engineered command-line viewer for [SVT Text-TV](https://www.svt.se/text-tv/), Swedish Television's public-service teletext. The UI might be [1979 calling](https://www.theguardian.com/world/2024/jan/11/teletext-lives-on-in-sweden-thanks-to-nostalgia-and-trusted-content), but it's still a properly excellent source of news. Now available in a terminal near you.
+A small and fast, yet decidedly over-engineered command-line and interactive viewer for [SVT Text-TV](https://www.svt.se/text-tv/), Swedish Television's public-service teletext. The UI might be [1979 calling](https://www.theguardian.com/world/2024/jan/11/teletext-lives-on-in-sweden-thanks-to-nostalgia-and-trusted-content), but it's still a properly excellent source of news. Now available in a terminal near you.
 
 <p align="center">
 
