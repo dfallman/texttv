@@ -11,6 +11,24 @@ A small and fast, yet decidedly over-engineered command-line viewer for [SVT Tex
 `texttv` is written entirely in [Rust](https://rustup.rs/) and runs on most platforms 
 (macOS, Windows, Linux, etc.) in most terminal emulators (such as [iTerm2](https://iterm2.com/), [Ghostty](https://ghostty.org/), [Terminal.app](https://support.apple.com/guide/terminal/welcome/mac), [Windows Terminal](https://github.com/microsoft/terminal), [GNOME Terminal](https://help.gnome.org/users/gnome-terminal/stable/), [Konsole](https://konsole.kde.org/), [Foot](https://codeberg.org/dnkl/foot), [Terminator](https://gnome-terminator.org/), [Kitty](https://sw.kovidgoyal.net/kitty/), [WezTerm](https://wezterm.org/), [Alacritty](https://alacritty.org/), [Tabby](https://tabby.sh/), and others). 
 
+## Installation
+
+Make sure you have the latest version of Rust installed:
+
+```bash
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+```
+
+Then clone the repo and install:
+
+```bash
+git clone https://github.com/dfallman/texttv
+cd texttv
+cargo install --path .
+```
+
+**Note:** `texttv` requires at least Rust 1.85+, but the latest version is suggested. On most machines, Rust is very easy to install. Use [Rustup](https://rustup.rs/) rather than your package manager to install it though, as this ensures you'll get the latest version.
+
 ## Usage
 `texttv` is simple to use out of the box and doesn't require any particular configuration
 in most terminals to get started. 
@@ -70,6 +88,22 @@ texttv 300 --mode blocks         # force the half-block fallback
 
 **Pro tip:** if you prefer a rendering mode and size etc that's not the default for your terminal emulator, consider creating a configuration file (see below). That way your preferred settings will load automatically and you only have to type `texttv <PAGE>`.
 
+### A note on double-height headlines
+
+Teletext's headline rows are *double-height*, where each character is one column
+wide but two rows tall. The terminal equivalent is called `DECDHL` (DEC Double-Height
+Line), a VT100-era escape sequence that does exactly the same thing.
+
+In theory `texttv` could emit `DECDHL` and let your terminal handle it. In practice
+though, support is a mess at best: xterm, Kitty, WezTerm, and Konsole render it correctly (more or less);
+Apple Terminal, Alacritty, Windows Terminal, and Ghostty either ignore it,
+half-render it, or break in interesting ways around scrolling and cursor
+positioning. Many emulators also disagree about how copy-paste, resize, and reflow should behave.
+
+Rather than ship a feature that looks good on a third of terminals and
+visibly broken on the rest, `texttv` renders headlines at normal height in
+teletext mode. You still get the bold weight and the color, just not the
+2x vertical. Image mode preserves them faithfully however. Optional support for DECDHL might be added in future releases.
 
 ## Usage examples
 `texttv` is easy to use out of the box but also highly configurable, so the above is only the basic operation. Here are some
@@ -92,25 +126,6 @@ texttv 101 --mode iterm --size small --source svt --verbose
 ```
 
 The third example enforces iTerm2's default rendering mode (image), outputs it in small size, enforces the source to be SVT, and shows verbose logging output in the console.
-
- 
-# Installation
-
-Make sure you have the latest version of Rust installed:
-
-```bash
-curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
-```
-
-Then clone the repo and install:
-
-```bash
-git clone https://github.com/dfallman/texttv
-cd texttv
-cargo install --path .
-```
-
-`texttv` requires at least Rust 1.85+, but the latest version is suggested. On most machines, Rust is very easy to install. Use [Rustup](https://rustup.rs/) rather than your package manager to install it though, as this ensures you'll get the latest version.
 
 ## Options
 
@@ -277,7 +292,27 @@ Please respect the upstream terms of service when using it — keep your
 requests reasonable, don't strip the User-Agent or the `app=` parameter, and
 don't use this tool or any part of this tool to overload either service.
 
-## But I don't know any Swedish!
+# Installation
+
+Make sure you have the latest version of Rust installed:
+
+```bash
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+```
+
+Then clone the repo and install:
+
+```bash
+git clone https://github.com/dfallman/texttv
+cd texttv
+cargo install --path .
+```
+
+`texttv` requires at least Rust 1.85+, but the latest version is suggested. On most machines, Rust is very easy to install. Use [Rustup](https://rustup.rs/) rather than your package manager to install it though, as this ensures you'll get the latest version.
+
+# Misc
+
+## Help! I don't know any Swedish!
 
 Obvious perhaps, but SVT Text-TV is in Swedish. While a built-in translation engine is
 out of scope for this application, there are ways around this if you
