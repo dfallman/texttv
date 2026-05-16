@@ -59,8 +59,8 @@ Ghostty, WezTerm, iTerm2). On other terminal emulators, you can try it via `--mo
 half-block-only terminals (these include Apple Terminal, Alacritty, Windows Terminal,
 and others) image mode falls back to a Unicode-half-block rendering, which is
 considerably worse than the teletext text path. Unless you have a very large terminal
-window, it'll look quite blurry (still pretty cool though). So for these terminals, 
-the default stays text.
+window, it'll look quite blurry (still pretty cool though!) So for these terminals, 
+the default is `--mode teletext`.
 
 Pick explicitly with `--mode`:
 
@@ -71,6 +71,9 @@ texttv 300 --mode kitty          # force Kitty graphics protocol
 texttv 300 --mode iterm          # force iTerm2 inline-image protocol
 texttv 300 --mode blocks         # force the half-block fallback
 ```
+
+**Pro tip:** if you prefer a rendering mode and size etc that's not the default for your terminal emulator, consider creating a configuration file (see below). That way your preferred settings will load automatically and you only have to type `texttv <PAGE>`.
+
 
 # Usage examples
 `texttv` is easy to use out of the box but also highly configurable, so the above is only the basic operation. Here are some
