@@ -24,8 +24,9 @@ This opens a Text-TV browser in the terminal and allows you to navigate the tele
 
 Use the commands `texttv` or `texttx --interactive`.
 
+<p align="center">
 <img width="400" alt="texttv interactive mode" src="https://github.com/user-attachments/assets/cf0a95bd-c155-4ef1-b985-2b2d781d8d4d" />
-
+</p>
 
 ### Single page view mode
 Outputs a single page to the terminal. Type `texttv 360` to view page 360, for example (I wonder how those Birch Leaves are going...) How the single page is rendered depends on your terminal emulator's capabilities and your settings (see below).
