@@ -102,7 +102,9 @@ texttv 300 --mode blocks         # force the half-block fallback
 ### A note on double-height headlines
 
 Teletext's headline rows are *double-height*, where each character is one column
-wide but two rows tall. The terminal equivalent is called `DECDHL` (DEC Double-Height
+wide but two rows tall. SVT Text-TV tends to frequently use double-height characters for headings, typically on page `100`.
+
+The terminal equivalent is called `DECDHL` (DEC Double-Height
 Line), a VT100-era escape sequence that does exactly the same thing.
 
 In theory `texttv` could emit `DECDHL` and let your terminal handle it. In practice
