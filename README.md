@@ -7,7 +7,7 @@ in a terminal near you!
 
 `texttv` is written entirely in [Rust](https://rustup.rs/) and runs on most platforms 
 (macOS, Windows, Linux, etc.) in most terminal emulators (such as iTerm2, Kitty, WezTerm, 
-Ghostty, PowerShell, Terminal.app, etc.) 
+Ghostty, Windows Terminal, Terminal.app, Alacritty, Tabby, GNOME Terminal, Konsole, Foot, Terminator, etc.) 
 
 ## Usage
 `texttv` is simple to use out of the box and doesn't require any particular configuration
