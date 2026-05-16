@@ -5,6 +5,8 @@ A small and fast, yet decisively over-engineered command-line parser and reader 
 While 1979 _is_ calling on its UI, it's a properly excellent source of news. Now available
 in a terminal near you!
 
+<img width="776" height="1344" alt="CleanShot 2026-05-16 at 11 58 23@2x" src="https://github.com/user-attachments/assets/f4e49540-0646-4153-83b3-7abeef683b68" />
+
 `texttv` is written entirely in [Rust](https://rustup.rs/) and runs on most platforms 
 (macOS, Windows, Linux, etc.) in most terminal emulators (such as iTerm2, Kitty, WezTerm, 
 Ghostty, Windows Terminal, Terminal.app, Alacritty, Tabby, GNOME Terminal, Konsole, Foot, Terminator, etc.) 
@@ -19,6 +21,9 @@ The app has two different modes, _interactive_ and _single page view_.
 This opens a Text-TV browser in the terminal and allows you to navigate the teletext pages using familiar inputs. Type the page number to go to tht page, use your arrow keys left and right to go to next/previous page, use up and down to select links on the page, and enter to select. Press `Esc` to quit.
 
 Use the commands `texttv` or `texttx --interactive`.
+
+<img width="528" height="800" alt="CleanShot 2026-05-16 at 11 56 42" src="https://github.com/user-attachments/assets/cf0a95bd-c155-4ef1-b985-2b2d781d8d4d" />
+
 
 ### Single page view mode
 Outputs a single page to the terminal. Type `texttv 360` to view page 360, for example (I wonder how those Birch Leaves are going...) How the single page is rendered depends on your terminal emulator's capabilities and your settings (see below).
