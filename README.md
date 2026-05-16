@@ -65,7 +65,7 @@ block-characters (the SVT logo, sport icons, weather symbols, navigation
 borders). The benefit here is that the text you see is real text: copyable, 
 grep-able, and feels right at home in the terminal. The downside is that we lose some
 minor details on the page, most notably the double-height characters that most terminal
-emulators can't render in a predictable fashion.
+emulators can't render in a predictable fashion (see note below).
 
 <p align="center">
     <img width="800" alt="texttv in use in the terminal" src="https://github.com/user-attachments/assets/1dfe1df2-e52f-4ec9-b617-e467254157e6" />
