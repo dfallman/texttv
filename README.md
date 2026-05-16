@@ -4,12 +4,12 @@ A small and fast, yet decidedly over-engineered command-line viewer for [SVT Tex
 
 <p align="center">
 
-  <img width="800" alt="textv in use in the terminal" src="https://github.com/user-attachments/assets/1dfe1df2-e52f-4ec9-b617-e467254157e6" />
+  <img width="800" alt="texttv in use in the terminal" src="https://github.com/user-attachments/assets/1dfe1df2-e52f-4ec9-b617-e467254157e6" />
 
 </p>
 
 `texttv` is written entirely in [Rust](https://rustup.rs/) and runs on most platforms 
-(macOS, Windows, Linux, etc.) in most terminal emulators (such as [iTerm2](https://iterm2.com/), [Ghostty](https://ghostty.org/), [Terminal.app](https://support.apple.com/guide/terminal/welcome/mac), [Windows Terminal](https://github.com/microsoft/terminal), [GNOME Terminal](https://help.gnome.org/users/gnome-terminal/stable/), [Konsole](https://konsole.kde.org/), [Foot](https://codeberg.org/dnkl/foot), [Terminator](https://gnome-terminator.org/), [Kitty](https://sw.kovidgoyal.net/kitty/), [WezTerm](https://wezterm.org/), [Alacritty](https://alacritty.org/), [Tabby](https://tabby.sh/), and others.) 
+(macOS, Windows, Linux, etc.) in most terminal emulators (such as [iTerm2](https://iterm2.com/), [Ghostty](https://ghostty.org/), [Terminal.app](https://support.apple.com/guide/terminal/welcome/mac), [Windows Terminal](https://github.com/microsoft/terminal), [GNOME Terminal](https://help.gnome.org/users/gnome-terminal/stable/), [Konsole](https://konsole.kde.org/), [Foot](https://codeberg.org/dnkl/foot), [Terminator](https://gnome-terminator.org/), [Kitty](https://sw.kovidgoyal.net/kitty/), [WezTerm](https://wezterm.org/), [Alacritty](https://alacritty.org/), [Tabby](https://tabby.sh/), and others). 
 
 ## Usage
 `texttv` is simple to use out of the box and doesn't require any particular configuration
@@ -18,9 +18,9 @@ in most terminals to get started.
 The app has two different modes, **interactive mode** (where you browse the pages) and **single page view** (where you output a single page to the terminal).
 
 ### Interactive mode 
-This opens a Text-TV browser in the terminal and allows you to navigate the teletext pages using familiar inputs. Type the page number to go to tht page, use your arrow keys left and right to go to next/previous page, use up and down to select links on the page, and enter to select. Press `Esc` to quit.
+This opens a Text-TV browser in the terminal and allows you to navigate the teletext pages using familiar inputs. Type the page number to go to that page, use your arrow keys left and right to go to next/previous page, use up and down to select links on the page, and enter to select. Press `Esc` to quit.
 
-Use the commands `texttv` or `texttx --interactive`.
+Use the commands `texttv` or `texttv --interactive`.
 
 <p align="center">
 
@@ -33,7 +33,7 @@ Use the commands `texttv` or `texttx --interactive`.
 ### Single page view mode
 Outputs a single page to the terminal. Type `texttv 360` to view page 360, for example (I wonder how those Birch Leaves are going...) How the single page is rendered depends on your terminal emulator's capabilities and your settings (see below).
 
-# Rendering modes
+## Rendering modes
 
 `texttv` has two different ways to render a page. The right one for your 
 terminal defaults automatically, but you can always override it. 
@@ -43,12 +43,12 @@ Both render types have their pros and cons, pick the one you like the most:
 40-column page as real terminal text: the 8 teletext colors as ANSI
 truecolor, bold double-height headings, Unicode sextants for the mosaic
 block-characters (the SVT logo, sport icons, weather symbols, navigation
-borders). The benefits here is that the text you see is real text: copyable, 
+borders). The benefit here is that the text you see is real text: copyable, 
 grep-able, and feels right at home in the terminal. The downside is that we lose some
 minor details on the page, most notably the double-height characters that most terminal
 emulators can't render in a predictable fashion.
 
-3. **Image mode**, on the other hand, asks your terminal to draw the original page GIF that SVT
+2. **Image mode**, on the other hand, asks your terminal to draw the original page GIF that SVT
 itself serves. Here, you'll get pixel-perfect rendering, but you lose selectable text.
 This is the default pick for terminals with a native graphics protocol (Kitty,
 Ghostty, WezTerm, iTerm2). On other terminal emulators, you can try it via `--mode auto`. On
@@ -71,7 +71,7 @@ texttv 300 --mode blocks         # force the half-block fallback
 **Pro tip:** if you prefer a rendering mode and size etc that's not the default for your terminal emulator, consider creating a configuration file (see below). That way your preferred settings will load automatically and you only have to type `texttv <PAGE>`.
 
 
-# Usage examples
+## Usage examples
 `texttv` is easy to use out of the box but also highly configurable, so the above is only the basic operation. Here are some
 examples of a few typical options (see below for details):
 
@@ -79,7 +79,7 @@ examples of a few typical options (see below for details):
 texttv
 ```
 
-The first example starts `texttv` in interactive mode, which allows you to navigate through pages using numbers input, arrow keys, and `Enter` to select, `Esc` to quit.
+The first example starts `texttv` in interactive mode, which allows you to navigate through pages using number input, arrow keys, and `Enter` to select, `Esc` to quit.
 
 ```
 texttv 300 --mode teletext
@@ -116,12 +116,12 @@ cargo install --path .
 
 | Flag | Meaning |
 | --- | --- |
-| `PAGE` | The page number. 100 and 999. |
+| `PAGE` | The page number. Between 100 and 999. |
 | `--mode {teletext,auto,kitty,iterm,blocks}` | Rendering path. Default depends on your terminal (see the matrix below). |
 | `--size {tiny,small,medium,large,xl,full}` | Width for image modes. Default `medium` (60 cells). Ignored in teletext mode. |
 | `--source {texttv-nu,svt}` | Data source. Defaults to `texttv-nu` for teletext (it exposes the color attributes we need to reconstruct the page), `svt` for image modes. |
 | `--no-color` | Strip ANSI color and the right-edge frame. Plain mono. |
-| `--no-padding` | Drop the blank rows above and below the page. On by default. |
+| `--no-padding` | Drop the blank rows above and below the page. (Padding is on by default.) |
 | `--list` | Print the named-section index and exit. |
 | `--debug-protocol` | Echo the detected graphics protocol on stderr before drawing. |
 | `--verbose` / `-v` | Per-phase timing traces on stderr. Also enabled by `TEXTTV_TIMINGS=1`. |
@@ -277,33 +277,27 @@ Please respect the upstream terms of service when using it — keep your
 requests reasonable, don't strip the User-Agent or the `app=` parameter, and
 don't use this tool or any part of this tool to overload either service.
 
-## Translation
+## But I don't know any Swedish!
 
 Obvious perhaps, but SVT Text-TV is in Swedish. While a built-in translation engine is
 out of scope for this application, there are ways around this if you
 don't speak Swedish but are keen to read what's happening:
 
-1. Learn Swedish. It's not the easiest language to learn, to be honest, but there are many resources available.
+1. Learn Swedish. It's not the easiest language to learn, to be honest, but there are many [online resources available](https://studyinsweden.se/moving-to-sweden/learn-swedish/).
 
-2. Pipe the output of `texttv` into a translation engine or LLM, or you can use terminal-based translation engines such as `translate-shell`. Just make sure to use `--mode teletext`.
-
-```
-brew install translate-shell
-```
-
-With it installed, pipe the output of `texttv` into the translation engine:
+2. Pipe the output of `texttv` into a translation engine or LLM, or you can use terminal-based translation engines such as [translate-shell](https://github.com/soimort/translate-shell). With it installed, pipe the output of `texttv` into the translation engine:
 
 ```
 texttv 100 | trans -b sv:en
 ```
 
-Not perfect, but you'll get the gist of it.
+It's not going to be perfect, but you'll get the gist of it.
 
 ## Note on AI use
 
 The author of this application has been writing code for over 30 years. Lately, 
 LLM agent-enhanced coding practices have rekindled my sense of awe at what's 
-possible. This project has been built using a range of tools, Anthropic's Claude Code (using Opus 4.7) are among them.
+possible. This project has been built using a range of tools, including Anthropic's Claude Code (using Opus 4.7).
 
 Unlike some who dismiss anything touched by a coding agent as "slop," I don't 
 see it that way. To me, these tools are a way to move much faster, explore 
