@@ -2,8 +2,8 @@
 
 A small and fast, yet decisively over-engineered command-line parser and reader for 
 [SVT Text-TV](https://www.svt.se/text-tv/) — Sweden's public-service teletext. 
-While 1979 _is_ calling, it's still a properly excellent source of news. Now available
-in a terminal near you.
+While 1979 _is_ calling on its UI, it's a properly excellent source of news. Now available
+in a terminal near you!
 
 `texttv` is written entirely in [Rust](https://rustup.rs/) and runs on most platforms 
 (macOS, Windows, Linux, etc.) in most terminal emulators (such as iTerm2, Kitty, WezTerm, 
