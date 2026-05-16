@@ -37,29 +37,6 @@ Use the commands `texttv` or `texttx --interactive`.
 ### Single page view mode
 Outputs a single page to the terminal. Type `texttv 360` to view page 360, for example (I wonder how those Birch Leaves are going...) How the single page is rendered depends on your terminal emulator's capabilities and your settings (see below).
 
-### Examples
-`texttv` is easy to use out of the box but also highly configurable, so the above is only the basic operation. Here are some
-examples of a few typical options (see below for details):
-
-```
-texttv
-```
-
-The first example starts `texttv` in interactive mode, which allows you to navigate through pages using numbers input, arrow keys, and `Enter` to select, `Esc` to quit.
-
-```
-texttv 300 --mode teletext
-```
-
-The second example shows page 300 but overrides the default rendering mode (see below) to `teletext` mode, which draws the page as text+ANSI.
-
-```
-texttv 101 --mode iterm --size small --source svt --verbose 
-```
-
-The third example enforces iTerm2's default rendering mode (image), outputs it in small size, enforces the source to be SVT, and shows verbose logging output in the console.
-
-
 # Rendering modes
 
 `texttv` has two different ways to render a page. The right one for your 
@@ -94,6 +71,28 @@ texttv 300 --mode kitty          # force Kitty graphics protocol
 texttv 300 --mode iterm          # force iTerm2 inline-image protocol
 texttv 300 --mode blocks         # force the half-block fallback
 ```
+
+# Usage examples
+`texttv` is easy to use out of the box but also highly configurable, so the above is only the basic operation. Here are some
+examples of a few typical options (see below for details):
+
+```
+texttv
+```
+
+The first example starts `texttv` in interactive mode, which allows you to navigate through pages using numbers input, arrow keys, and `Enter` to select, `Esc` to quit.
+
+```
+texttv 300 --mode teletext
+```
+
+The second example shows page 300 but overrides the default rendering mode (see below) to `teletext` mode, which draws the page as text+ANSI.
+
+```
+texttv 101 --mode iterm --size small --source svt --verbose 
+```
+
+The third example enforces iTerm2's default rendering mode (image), outputs it in small size, enforces the source to be SVT, and shows verbose logging output in the console.
 
  
 # Installation
