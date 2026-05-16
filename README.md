@@ -5,9 +5,11 @@ A small and fast, yet decisively over-engineered command-line parser and reader 
 While 1979 _is_ calling on its UI, it's a properly excellent source of news. Now available
 in a terminal near you!
 
-<figure align="center">
+<p align="center">
+
   <img width="800" alt="textv in use in the terminal" src="https://github.com/user-attachments/assets/1dfe1df2-e52f-4ec9-b617-e467254157e6" />
-</figure>
+
+</p>
 
 `texttv` is written entirely in [Rust](https://rustup.rs/) and runs on most platforms 
 (macOS, Windows, Linux, etc.) in most terminal emulators (such as iTerm2, Kitty, WezTerm, 
@@ -24,10 +26,13 @@ This opens a Text-TV browser in the terminal and allows you to navigate the tele
 
 Use the commands `texttv` or `texttx --interactive`.
 
-<figure align="center">
+<p align="center">
+
   <img width="400" alt="texttv interactive mode" src="https://github.com/user-attachments/assets/cf0a95bd-c155-4ef1-b985-2b2d781d8d4d" />
-    <figcaption><em>Interactive mode</em></figcaption>
-</figure>
+  <br>  
+  <em>Interactive mode</em>
+
+</p>
 
 ### Single page view mode
 Outputs a single page to the terminal. Type `texttv 360` to view page 360, for example (I wonder how those Birch Leaves are going...) How the single page is rendered depends on your terminal emulator's capabilities and your settings (see below).
