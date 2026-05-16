@@ -1,6 +1,6 @@
 # texttv
 
-A small and fast, yet decidedly over-engineered command-line viewer for [SVT Text-TV](https://www.svt.se/text-tv/), Swedish Television's public-service teletext. The UI might be 1979 calling, but it's a properly excellent source of news. Now available in a terminal near you.
+A small and fast, yet decidedly over-engineered command-line viewer for [SVT Text-TV](https://www.svt.se/text-tv/), Swedish Television's public-service teletext. The UI might be [1979 calling](https://www.theguardian.com/world/2024/jan/11/teletext-lives-on-in-sweden-thanks-to-nostalgia-and-trusted-content), but it's still a properly excellent source of news. Now available in a terminal near you.
 
 <p align="center">
 
@@ -9,8 +9,7 @@ A small and fast, yet decidedly over-engineered command-line viewer for [SVT Tex
 </p>
 
 `texttv` is written entirely in [Rust](https://rustup.rs/) and runs on most platforms 
-(macOS, Windows, Linux, etc.) in most terminal emulators (such as iTerm2, Kitty, WezTerm, 
-Ghostty, Windows Terminal, Terminal.app, Alacritty, Tabby, GNOME Terminal, Konsole, Foot, Terminator, etc.) 
+(macOS, Windows, Linux, etc.) in most terminal emulators (such as [iTerm2](https://iterm2.com/), [Ghostty](https://ghostty.org/), [Terminal.app](https://support.apple.com/guide/terminal/welcome/mac), [Windows Terminal](https://github.com/microsoft/terminal), [GNOME Terminal](https://help.gnome.org/users/gnome-terminal/stable/), [Konsole](https://konsole.kde.org/), [Foot](https://codeberg.org/dnkl/foot), [Terminator](https://gnome-terminator.org/), [Kitty](https://sw.kovidgoyal.net/kitty/), [WezTerm](https://wezterm.org/), [Alacritty](https://alacritty.org/), [Tabby](https://tabby.sh/), and others.) 
 
 ## Usage
 `texttv` is simple to use out of the box and doesn't require any particular configuration
