@@ -307,24 +307,6 @@ Please respect the upstream terms of service when using it — keep your
 requests reasonable, don't strip the User-Agent or the `app=` parameter, and
 don't use this tool or any part of this tool to overload either service.
 
-# Installation
-
-Make sure you have the latest version of Rust installed:
-
-```bash
-curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
-```
-
-Then clone the repo and install:
-
-```bash
-git clone https://github.com/dfallman/texttv
-cd texttv
-cargo install --path .
-```
-
-`texttv` requires at least Rust 1.85+, but the latest version is suggested. On most machines, Rust is very easy to install. Use [Rustup](https://rustup.rs/) rather than your package manager to install it though, as this ensures you'll get the latest version.
-
 # Misc
 
 ## Help! I don't know any Swedish!
