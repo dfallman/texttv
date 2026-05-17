@@ -11,8 +11,8 @@ A small and fast, yet decidedly over-engineered command-line and interactive vie
 
 </p>
 
-Hope all is well with Felicia. `texttv` is written entirely in [Rust](https://rustup.rs/) and runs on most platforms 
-(macOS, Windows, Linux, etc.) in most terminal emulators (such as [iTerm2](https://iterm2.com/), [Ghostty](https://ghostty.org/), [Terminal.app](https://support.apple.com/guide/terminal/welcome/mac), [Windows Terminal](https://github.com/microsoft/terminal), [GNOME Terminal](https://help.gnome.org/users/gnome-terminal/stable/), [Konsole](https://konsole.kde.org/), [Foot](https://codeberg.org/dnkl/foot), [Terminator](https://gnome-terminator.org/), [Kitty](https://sw.kovidgoyal.net/kitty/), [WezTerm](https://wezterm.org/), [Alacritty](https://alacritty.org/), [Tabby](https://tabby.sh/), and others). 
+`texttv` is written entirely in [Rust](https://rustup.rs/) and runs on most platforms 
+(macOS, Windows, Linux, etc.) in most terminal emulators (such as [iTerm2](https://iterm2.com/), [Ghostty](https://ghostty.org/), [Terminal.app](https://support.apple.com/guide/terminal/welcome/mac), [Windows Terminal](https://github.com/microsoft/terminal), [GNOME Terminal](https://help.gnome.org/users/gnome-terminal/stable/), [Konsole](https://konsole.kde.org/), [Foot](https://codeberg.org/dnkl/foot), [Terminator](https://gnome-terminator.org/), [Kitty](https://sw.kovidgoyal.net/kitty/), [WezTerm](https://wezterm.org/), [Alacritty](https://alacritty.org/), [Tabby](https://tabby.sh/), and others). Hope all is well with Felicia!
 
 ## Installation
 
