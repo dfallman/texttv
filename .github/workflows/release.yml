@@ -22,11 +22,16 @@ jobs:
           - target: x86_64-unknown-linux-gnu
             os: ubuntu-latest
             archive: tar.gz
+          - target: aarch64-unknown-linux-gnu
+            os: ubuntu-24.04-arm
+            archive: tar.gz
           - target: aarch64-apple-darwin
             os: macos-latest
             archive: tar.gz
+          # macos-13 was retired in Dec 2025; macos-15-intel is the last
+          # Intel image (supported until Fall 2027).
           - target: x86_64-apple-darwin
-            os: macos-13
+            os: macos-15-intel
             archive: tar.gz
           - target: x86_64-pc-windows-msvc
             os: windows-latest
@@ -74,3 +79,76 @@ jobs:
           files: ${{ env.ASSET }}
           generate_release_notes: true
           fail_on_unmatched_files: true
+
+  homebrew:
+    name: Update Homebrew tap
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Regenerate formula and push to dfallman/homebrew-tap
+        env:
+          GH_TOKEN: ${{ github.token }}
+          # Fine-grained PAT with contents:write on dfallman/homebrew-tap.
+          TAP_TOKEN: ${{ secrets.TAP_GITHUB_TOKEN }}
+        run: |
+          if [ -z "$TAP_TOKEN" ]; then
+            echo "TAP_GITHUB_TOKEN secret not set; skipping tap update."
+            exit 0
+          fi
+          tag="${GITHUB_REF_NAME}"
+          version="${tag#v}"
+          mkdir artifacts
+          gh release download "$tag" --repo "$GITHUB_REPOSITORY" \
+            --pattern '*.tar.gz' --dir artifacts
+          sha() { shasum -a 256 "artifacts/texttv-${tag}-$1.tar.gz" | cut -d' ' -f1; }
+
+          git clone "https://x-access-token:${TAP_TOKEN}@github.com/dfallman/homebrew-tap.git" tap
+          mkdir -p tap/Formula
+          cat > tap/Formula/texttv.rb << EOF
+          # typed: false
+          # frozen_string_literal: true
+
+          # This formula is regenerated automatically by the release workflow in
+          # dfallman/texttv (.github/workflows/release.yml) on every tagged release.
+          class Texttv < Formula
+            desc "Render SVT Text-TV (Swedish teletext) pages in the terminal"
+            homepage "https://github.com/dfallman/texttv"
+            version "${version}"
+            license "MIT"
+
+            on_macos do
+              if Hardware::CPU.arm?
+                url "https://github.com/dfallman/texttv/releases/download/${tag}/texttv-${tag}-aarch64-apple-darwin.tar.gz"
+                sha256 "$(sha aarch64-apple-darwin)"
+              else
+                url "https://github.com/dfallman/texttv/releases/download/${tag}/texttv-${tag}-x86_64-apple-darwin.tar.gz"
+                sha256 "$(sha x86_64-apple-darwin)"
+              end
+            end
+
+            on_linux do
+              if Hardware::CPU.arm?
+                url "https://github.com/dfallman/texttv/releases/download/${tag}/texttv-${tag}-aarch64-unknown-linux-gnu.tar.gz"
+                sha256 "$(sha aarch64-unknown-linux-gnu)"
+              else
+                url "https://github.com/dfallman/texttv/releases/download/${tag}/texttv-${tag}-x86_64-unknown-linux-gnu.tar.gz"
+                sha256 "$(sha x86_64-unknown-linux-gnu)"
+              end
+            end
+
+            def install
+              bin.install "texttv"
+            end
+
+            test do
+              assert_match version.to_s, shell_output("#{bin}/texttv --version")
+            end
+          end
+          EOF
+          cd tap
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add Formula/texttv.rb
+          git diff --cached --quiet && { echo "Formula unchanged."; exit 0; }
+          git commit -m "texttv ${tag}"
+          git push

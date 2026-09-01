@@ -16,6 +16,14 @@ A small and fast, yet decidedly over-engineered command-line and interactive vie
 
 ## Installation
 
+### Homebrew (macOS and Linux)
+
+```bash
+brew install dfallman/tap/texttv
+```
+
+### From source
+
 Make sure you have the latest version of Rust installed. Use [Rustup](https://rustup.rs/) rather than your package manager to install, as this ensures you'll get the latest version.
 
 ```bash
