@@ -2,7 +2,7 @@
 
 use anyhow::{Context, Result, anyhow};
 use base64::Engine;
-use image::{DynamicImage, ImageFormat};
+use image::{DynamicImage, ImageFormat, ImageReader, Limits};
 use scraper::{Html, Selector};
 
 #[derive(Debug)]
@@ -10,6 +10,22 @@ pub struct Page {
     pub page_no: u16,
     pub images: Vec<DynamicImage>,
     pub text: String,
+}
+
+/// Largest SVT page GIF edge we'll decode. Real pages are 520×400 px.
+pub const MAX_PAGE_GIF_DIM: u32 = 2048;
+
+/// Decode a GIF with hard width/height caps. `image`'s defaults allow any
+/// dimensions up to a 512 MiB allocation, which a hostile 13-byte header can
+/// trigger; both texttv endpoints hand us bytes we don't control, so every
+/// decode goes through here with a limit sized to the real-world image.
+pub fn decode_gif_bounded(bytes: &[u8], max_dim: u32) -> Result<DynamicImage> {
+    let mut limits = Limits::default();
+    limits.max_image_width = Some(max_dim);
+    limits.max_image_height = Some(max_dim);
+    let mut reader = ImageReader::with_format(std::io::Cursor::new(bytes), ImageFormat::Gif);
+    reader.limits(limits);
+    reader.decode().context("gif decode failed")
 }
 
 pub fn extract_page(html: &str, page_no: u16) -> Result<Page> {
@@ -46,7 +62,36 @@ fn decode_data_uri(src: &str) -> Result<DynamicImage> {
     let bytes = base64::engine::general_purpose::STANDARD
         .decode(payload.trim())
         .context("base64 decode failed")?;
-    image::load_from_memory_with_format(&bytes, ImageFormat::Gif).context("gif decode failed")
+    decode_gif_bounded(&bytes, MAX_PAGE_GIF_DIM)
+}
+
+/// Replace control characters with spaces so untrusted page content can't
+/// smuggle terminal escape sequences (ESC/OSC/DCS, BEL, cursor moves, …)
+/// into stdout. Newlines are preserved for multi-line text; everything else
+/// in the C0/C1 ranges — plus the Unicode line/paragraph separators, which
+/// some terminals treat as newlines — becomes a plain space.
+pub fn sanitize_text(s: &str) -> String {
+    s.chars()
+        .map(|c| {
+            if c == '\n' || !(c.is_control() || c == '\u{2028}' || c == '\u{2029}') {
+                c
+            } else {
+                ' '
+            }
+        })
+        .collect()
+}
+
+/// Only mosaic GIFs served from texttv.nu's own CDN are ever fetched. The
+/// URL comes straight out of an untrusted HTML `style` attribute, so without
+/// this check a hostile response could point the client at arbitrary hosts
+/// (including loopback/internal addresses) or poison the on-disk cache under
+/// a legitimate-looking hash.
+pub const MOSAIC_URL_PREFIX: &str = "https://l.texttv.nu/storage/chars/";
+
+pub fn is_trusted_mosaic_url(url: &str) -> bool {
+    url.strip_prefix(MOSAIC_URL_PREFIX)
+        .is_some_and(|rest| rest.ends_with(".gif") && !rest.contains(['/', '?', '#']))
 }
 
 fn extract_text(doc: &Html) -> String {
@@ -71,7 +116,7 @@ fn extract_text(doc: &Html) -> String {
 }
 
 fn collect_text(node: scraper::ElementRef<'_>) -> String {
-    let raw: String = node.text().collect();
+    let raw: String = sanitize_text(&node.text().collect::<String>());
     let mut out = String::new();
     let mut prev_blank = false;
     let mut any_seen = false;
@@ -281,11 +326,11 @@ fn parse_colored_html(html: &str) -> Vec<Line> {
             let style = cell_el.value().attr("style").unwrap_or("");
             let (fg, bg, mosaic_flag) = parse_cell_classes(cls);
             let mosaic_url = if mosaic_flag {
-                extract_url_from_style(style)
+                extract_url_from_style(style).filter(|u| is_trusted_mosaic_url(u))
             } else {
                 None
             };
-            let text: String = cell_el.text().collect();
+            let text = sanitize_text(&cell_el.text().collect::<String>());
             // Mosaic spans have no inner text — preserve a single-space placeholder
             // so the line keeps its width.
             let text = if mosaic_flag && text.is_empty() {
@@ -456,6 +501,39 @@ mod tests {
     #[test]
     fn extract_url_missing_returns_none() {
         assert_eq!(extract_url_from_style("color: red;"), None);
+    }
+
+    #[test]
+    fn trusted_mosaic_url_accepts_cdn_gif() {
+        assert!(is_trusted_mosaic_url(
+            "https://l.texttv.nu/storage/chars/123.gif"
+        ));
+    }
+
+    #[test]
+    fn trusted_mosaic_url_rejects_other_hosts_schemes_and_paths() {
+        for bad in [
+            "http://l.texttv.nu/storage/chars/123.gif",
+            "https://l.texttv.nu.evil.example/storage/chars/123.gif",
+            "https://evil.example/storage/chars/123.gif",
+            "https://l.texttv.nu/storage/chars/../../etc/passwd.gif",
+            "https://l.texttv.nu/storage/chars/123.gif?x=1",
+            "https://l.texttv.nu/storage/chars/123.png",
+            "https://l.texttv.nu/storage/chars/",
+            "",
+        ] {
+            assert!(!is_trusted_mosaic_url(bad), "should reject {bad:?}");
+        }
+    }
+
+    #[test]
+    fn sanitize_text_keeps_newlines_and_swedish() {
+        assert_eq!(sanitize_text("hej\nvärld"), "hej\nvärld");
+    }
+
+    #[test]
+    fn sanitize_text_replaces_escapes_with_spaces() {
+        assert_eq!(sanitize_text("a\x1b[31mb\x07c\u{2028}d"), "a [31mb c d");
     }
 
     #[test]
