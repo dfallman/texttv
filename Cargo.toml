@@ -50,3 +50,7 @@ unused_must_use = "deny"
 [lints.clippy]
 unwrap_used = "deny"
 expect_used = "deny"
+
+[dev-dependencies]
+base64 = "0.22"
+image = { version = "0.25", default-features = false, features = ["gif"] }

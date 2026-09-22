@@ -1,7 +1,7 @@
 //! In-terminal interactive page browser. See
 //! `docs/superpowers/specs/2026-05-15-interactive-mode-design.md`.
 
-use std::io::{IsTerminal, Write, stdout};
+use std::io::{BufWriter, IsTerminal, Write, stdout};
 use std::sync::mpsc::{Receiver, TryRecvError, channel};
 use std::thread;
 use std::time::Duration;
@@ -796,7 +796,14 @@ pub fn run(initial_page: u16) -> Result<()> {
     enable_raw_mode().context("entering raw mode")?;
     execute!(stdout, EnterAlternateScreen).context("entering alt screen")?;
 
-    let result = run_inner(initial_page, &mut stdout);
+    // Stdout is line-buffered, so drawing through it directly flushes on
+    // every row — dozens of write syscalls per frame and visible tearing
+    // on slow terminals. Buffer the whole frame; `draw` flushes once at
+    // the end.
+    let mut out = BufWriter::with_capacity(64 * 1024, &stdout);
+    let result = run_inner(initial_page, &mut out);
+    let _ = out.flush();
+    drop(out);
 
     // Always restore terminal state, even on error.
     let _ = execute!(stdout, LeaveAlternateScreen);

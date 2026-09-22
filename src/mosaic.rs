@@ -17,6 +17,10 @@ use std::time::Duration;
 use crate::parse::{ColoredPage, TtColor};
 
 const FETCH_TIMEOUT_SECS: u64 = 5;
+
+/// Largest mosaic GIF edge we'll decode. Real ones are ~13×16 px; the cap
+/// bounds decoder memory no matter what a hostile header claims.
+pub const MAX_MOSAIC_DIM: u32 = 64;
 const USER_AGENT: &str = concat!(
     "texttv/",
     env!("CARGO_PKG_VERSION"),
@@ -33,6 +37,8 @@ fn agent() -> &'static ureq::Agent {
         ureq::AgentBuilder::new()
             .timeout_connect(Duration::from_secs(3))
             .timeout_read(Duration::from_secs(FETCH_TIMEOUT_SECS))
+            // Whole-request ceiling; see fetch::agent for why.
+            .timeout(Duration::from_secs(8))
             .user_agent(USER_AGENT)
             .build()
     })
@@ -55,6 +61,12 @@ fn cache() -> &'static Mutex<HashMap<String, u8>> {
 ///    same hash → same image bytes → same pattern, forever.
 /// 3. Network fetch + decode + write through both caches.
 pub fn resolve_pattern(url: &str, fg: TtColor, bg: TtColor) -> Result<u8> {
+    // The parser already filters mosaic URLs, but this is the only place
+    // that turns a URL into I/O — enforce it here too so no future caller
+    // can bypass the allow-list.
+    if !crate::parse::is_trusted_mosaic_url(url) {
+        return Err(anyhow!("untrusted mosaic URL: {url}"));
+    }
     if let Ok(guard) = cache().lock()
         && let Some(p) = guard.get(url).copied()
     {
@@ -195,7 +207,7 @@ fn fetch(url: &str) -> Result<Vec<u8>> {
 /// classify each as fg (bit set) or bg (bit clear) by closer Euclidean
 /// distance to the two expected teletext colors.
 pub fn decode_pattern(gif_bytes: &[u8], fg: TtColor, bg: TtColor) -> Result<u8> {
-    let img = image::load_from_memory_with_format(gif_bytes, image::ImageFormat::Gif)
+    let img = crate::parse::decode_gif_bounded(gif_bytes, MAX_MOSAIC_DIM)
         .context("decoding mosaic GIF")?;
     let rgb = img.to_rgb8();
     let (w, h) = (rgb.width(), rgb.height());
@@ -327,6 +339,49 @@ mod tests {
         assert!(is_closer_to([255, 255, 255], (255, 255, 255), (0, 0, 0)));
         assert!(!is_closer_to([0, 0, 0], (255, 255, 255), (0, 0, 0)));
         assert!(is_closer_to([200, 200, 200], (255, 255, 255), (0, 0, 0)));
+    }
+
+    #[test]
+    fn resolve_pattern_refuses_untrusted_url_without_fetching() {
+        // Port 9 (discard) on loopback: if this ever tries the network the
+        // connect fails, but the point is it must return Err immediately
+        // via the allow-list, before any I/O.
+        let err = resolve_pattern("http://127.0.0.1:9/123.gif", TtColor::White, TtColor::Black)
+            .expect_err("untrusted URL must be rejected");
+        assert!(
+            err.to_string().contains("untrusted mosaic URL"),
+            "rejected by the allow-list, not by a network failure: {err:#}"
+        );
+    }
+
+    /// Encode a solid-white RGBA image of the given size as GIF bytes.
+    fn gif_of_size(w: u32, h: u32) -> Vec<u8> {
+        use image::codecs::gif::GifEncoder;
+        let img = image::RgbaImage::from_pixel(w, h, image::Rgba([255, 255, 255, 255]));
+        let mut buf = Vec::new();
+        GifEncoder::new(&mut buf)
+            .encode(img.as_raw(), w, h, image::ExtendedColorType::Rgba8)
+            .expect("encode");
+        buf
+    }
+
+    #[test]
+    fn decode_pattern_accepts_real_mosaic_dimensions() {
+        let bytes = gif_of_size(13, 16);
+        let pat = decode_pattern(&bytes, TtColor::White, TtColor::Black).expect("decode");
+        assert_eq!(pat, 0b111111, "solid white on black = full block");
+    }
+
+    #[test]
+    fn decode_pattern_rejects_oversized_gif() {
+        // Real mosaics are ~13×16 px. Anything past MAX_MOSAIC_DIM is
+        // hostile input; refusing it bounds decoder memory regardless of
+        // what the GIF header claims.
+        let bytes = gif_of_size(MAX_MOSAIC_DIM + 1, 16);
+        let err = decode_pattern(&bytes, TtColor::White, TtColor::Black)
+            .expect_err("oversized mosaic must be rejected");
+        let msg = format!("{err:#}").to_lowercase();
+        assert!(msg.contains("limit"), "unexpected error: {err:#}");
     }
 
     #[test]

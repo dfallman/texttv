@@ -23,6 +23,10 @@ fn agent() -> &'static ureq::Agent {
             .timeout_connect(Duration::from_secs(5))
             .timeout_read(Duration::from_secs(10))
             .timeout_write(Duration::from_secs(10))
+            // The read timeout is per read() call; a server trickling one
+            // byte every few seconds would otherwise keep us hanging up to
+            // MAX_BODY_BYTES. This caps the whole request end to end.
+            .timeout(Duration::from_secs(20))
             .user_agent(USER_AGENT)
             .build()
     })
