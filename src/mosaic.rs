@@ -129,10 +129,21 @@ fn write_disk_cache(url: &str, pattern: u8) {
     }
     let path = dir.join(format!("{}.pat", cache_key(url)));
     // Write atomically via tmp+rename so concurrent writers don't tear.
-    let tmp = path.with_extension("pat.tmp");
+    let tmp = cache_tmp_path(&path);
     if std::fs::write(&tmp, [pattern]).is_ok() {
         let _ = std::fs::rename(&tmp, &path);
     }
+}
+
+/// `<final>.<pid>.tmp` — per-process so two texttv instances decoding the
+/// same mosaic can't rename each other's half-written tmp file into place.
+/// (A 0-byte result was self-healing — read as a miss — but cost a refetch.)
+fn cache_tmp_path(final_path: &std::path::Path) -> PathBuf {
+    let name = final_path
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or("mosaic.pat");
+    final_path.with_file_name(format!("{name}.{}.tmp", std::process::id()))
 }
 
 /// Upper bound on prefetch worker threads. Real pages have ~5–20 unique
@@ -382,6 +393,20 @@ mod tests {
             .expect_err("oversized mosaic must be rejected");
         let msg = format!("{err:#}").to_lowercase();
         assert!(msg.contains("limit"), "unexpected error: {err:#}");
+    }
+
+    #[test]
+    fn cache_tmp_path_is_unique_per_process() {
+        // Two texttv processes decoding the same mosaic must not share a
+        // tmp file, or one can rename the other's still-empty file into
+        // place. The PID in the name keeps them apart.
+        let final_path = PathBuf::from("/cache/123.pat");
+        let tmp = cache_tmp_path(&final_path);
+        let name = tmp.file_name().and_then(|n| n.to_str()).unwrap_or("");
+        assert!(name.starts_with("123.pat."), "{name}");
+        assert!(name.ends_with(".tmp"), "{name}");
+        assert!(name.contains(&std::process::id().to_string()), "{name}");
+        assert_eq!(tmp.parent(), final_path.parent());
     }
 
     #[test]

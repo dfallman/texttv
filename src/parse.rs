@@ -28,30 +28,46 @@ pub fn decode_gif_bounded(bytes: &[u8], max_dim: u32) -> Result<DynamicImage> {
     reader.decode().context("gif decode failed")
 }
 
-pub fn extract_page(html: &str, page_no: u16) -> Result<Page> {
-    let doc = Html::parse_document(html);
+const SUBPAGE_IMG_SELECTOR: &str = "img[src^='data:image/gif;base64,']";
 
-    let img_sel = Selector::parse("img[src^='data:image/gif;base64,']")
-        .map_err(|e| anyhow!("invalid selector: {e:?}"))?;
-    let images = doc
+/// Collect the base64 `src` of every subpage GIF, or a "not available"
+/// error when the page has none (SVT serves a stub for unknown pages).
+fn subpage_srcs(doc: &Html, page_no: u16) -> Result<Vec<&str>> {
+    let img_sel =
+        Selector::parse(SUBPAGE_IMG_SELECTOR).map_err(|e| anyhow!("invalid selector: {e:?}"))?;
+    let srcs: Vec<&str> = doc
         .select(&img_sel)
         .filter_map(|el| el.value().attr("src"))
-        .map(decode_data_uri)
-        .collect::<Result<Vec<_>>>()?;
-
-    if images.is_empty() {
+        .collect();
+    if srcs.is_empty() {
         return Err(anyhow!(
             "page {page_no} not available (no subpage images in response)"
         ));
     }
+    Ok(srcs)
+}
 
+pub fn extract_page(html: &str, page_no: u16) -> Result<Page> {
+    let doc = Html::parse_document(html);
+    let images = subpage_srcs(&doc, page_no)?
+        .into_iter()
+        .map(decode_data_uri)
+        .collect::<Result<Vec<_>>>()?;
     let text = extract_text(&doc);
-
     Ok(Page {
         page_no,
         images,
         text,
     })
+}
+
+/// Text-only variant of [`extract_page`] for `--mode teletext --source svt`.
+/// Checks that subpage images exist (so an unknown page still errors) but
+/// never base64- or GIF-decodes them.
+pub fn extract_page_text(html: &str, page_no: u16) -> Result<String> {
+    let doc = Html::parse_document(html);
+    subpage_srcs(&doc, page_no)?;
+    Ok(extract_text(&doc))
 }
 
 fn decode_data_uri(src: &str) -> Result<DynamicImage> {
