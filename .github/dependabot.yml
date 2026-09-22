@@ -1,9 +1,19 @@
-# Keeps the SHA-pinned actions in .github/workflows current. Pins are there
-# so a compromised or force-moved tag can't change what the release job runs;
-# Dependabot bumps the SHA (and the version comment) when upstream releases.
 version: 2
 updates:
+  - package-ecosystem: cargo
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    groups:
+      cargo-deps:
+        patterns: ["*"]
+
   - package-ecosystem: github-actions
     directory: /
     schedule:
       interval: weekly
+    open-pull-requests-limit: 5
+    groups:
+      actions:
+        patterns: ["*"]
