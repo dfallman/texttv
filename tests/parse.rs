@@ -185,3 +185,20 @@ fn svt_html_rejects_oversized_page_gif() {
     let msg = format!("{err:#}").to_lowercase();
     assert!(msg.contains("limit"), "unexpected error: {err:#}");
 }
+
+#[test]
+fn extract_page_text_skips_image_decoding() {
+    // The GIF payload is garbage: extract_page must fail on it, but the
+    // text-only extractor used by `--mode teletext --source svt` never
+    // decodes images and must still return the page text.
+    let html = r#"<html><body><img src="data:image/gif;base64,!!!notbase64!!!"><div class="Content_screenreaderOnly__x">100 SVT Text hej</div></body></html>"#;
+    assert!(extract_page(html, 100).is_err());
+    let text = texttv::parse::extract_page_text(html, 100).expect("text-only extract");
+    assert_eq!(text, "100 SVT Text hej");
+}
+
+#[test]
+fn extract_page_text_rejects_page_without_subpages() {
+    let err = texttv::parse::extract_page_text(PAGE_EMPTY, 999).expect_err("no images");
+    assert!(err.to_string().contains("not available"), "{err:#}");
+}

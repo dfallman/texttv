@@ -6,7 +6,7 @@ use texttv::cli::{Args, Mode, Size, Source, print_sections};
 use texttv::config::Config;
 use texttv::fetch;
 use texttv::mosaic;
-use texttv::parse::{extract_page, parse_texttv_nu};
+use texttv::parse::{extract_page, extract_page_text, parse_texttv_nu};
 use texttv::render::{RenderOptions, render_colored, render_images, render_text, stdout_is_tty};
 use texttv::timing;
 
@@ -186,14 +186,14 @@ fn run(args: Args) -> Result<(), AppError> {
         (Mode::Teletext, Source::Svt) => {
             let html = timing::time(&format!("fetch svt.se/{page}"), || fetch::fetch_html(page))
                 .map_err(AppError::Runtime)?;
-            let page_data = timing::time("parse svt html", || extract_page(&html, page))
+            let text = timing::time("parse svt html", || extract_page_text(&html, page))
                 .map_err(AppError::Runtime)?;
             let mut out = std::io::stdout().lock();
             timing::time("render text", || -> Result<(), anyhow::Error> {
                 if padding {
                     writeln!(out)?;
                 }
-                render_text(&page_data.text, &mut out)?;
+                render_text(&text, &mut out)?;
                 if padding {
                     writeln!(out)?;
                 }

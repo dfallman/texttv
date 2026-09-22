@@ -16,7 +16,7 @@ categories = ["command-line-utilities"]
 clap = { version = "4", features = ["derive"] }
 crossterm = "0.29"
 ureq = { version = "2", features = ["tls"] }
-viuer = "0.9"
+viuer = "0.11"
 image = { version = "0.25", default-features = false, features = ["gif"] }
 base64 = "0.22"
 scraper = "0.20"
