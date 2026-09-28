@@ -3,7 +3,7 @@
 [![audit](https://github.com/dfallman/texttv/actions/workflows/audit.yml/badge.svg)](https://github.com/dfallman/texttv/actions/workflows/audit.yml)
 [![license](https://img.shields.io/github/license/dfallman/texttv.svg)](https://github.com/dfallman/texttv/blob/main/LICENSE)
   
-A small and fast, yet decidedly over-engineered command-line and interactive viewer for [SVT Text-TV](https://www.svt.se/text-tv/), Swedish Television's public-service teletext. The UI might feel like it's [1979 calling](https://www.theguardian.com/world/2024/jan/11/teletext-lives-on-in-sweden-thanks-to-nostalgia-and-trusted-content), but it's still a properly excellent source of news. Now available in a terminal near you.
+A small and fast, yet decidedly over-engineered command-line and interactive viewer for [SVT Text-TV](https://www.svt.se/text-tv/), Swedish Television's public-service teletext. The UI might feel like it's [1979 calling](https://www.theguardian.com/world/2024/jan/11/teletext-lives-on-in-sweden-thanks-to-nostalgia-and-trusted-content), but it's still a proper source of news. Now available in a terminal near you.
 
 <p align="center">
   <img width="400" alt="texttv interactive mode" src="https://github.com/user-attachments/assets/cf0a95bd-c155-4ef1-b985-2b2d781d8d4d" />
