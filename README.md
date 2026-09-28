@@ -6,9 +6,7 @@
 A small and fast, yet decidedly over-engineered command-line and interactive viewer for [SVT Text-TV](https://www.svt.se/text-tv/), Swedish Television's public-service teletext. The UI might feel like it's [1979 calling](https://www.theguardian.com/world/2024/jan/11/teletext-lives-on-in-sweden-thanks-to-nostalgia-and-trusted-content), but it's still a properly excellent source of news. Now available in a terminal near you.
 
 <p align="center">
-
-  <img width="800" alt="texttv in use in the terminal" src="https://github.com/user-attachments/assets/e5f20f29-5f19-438d-9c6b-f31e51885e0a" />
-
+  <img width="400" alt="texttv interactive mode" src="https://github.com/user-attachments/assets/cf0a95bd-c155-4ef1-b985-2b2d781d8d4d" />
 </p>
 
 `texttv` is written entirely in [Rust](https://rustup.rs/) and runs on most platforms 
@@ -48,14 +46,6 @@ The app has two different modes, **interactive mode** (where you browse the page
 This opens a Text-TV browser in the terminal and allows you to navigate the teletext pages using familiar inputs. Type the page number to go to that page, use your arrow keys left and right to go to next/previous page, use up and down to select links on the page, and enter to select. Press `Esc` to quit.
 
 Use the commands `texttv` or `texttv --interactive`.
-
-<p align="center">
-
-  <img width="400" alt="texttv interactive mode" src="https://github.com/user-attachments/assets/cf0a95bd-c155-4ef1-b985-2b2d781d8d4d" />
-  <br>  
-  <em>Interactive mode</em>
-
-</p>
 
 ### Single page view mode
 Outputs a single page to the terminal. Type `texttv 360` to view page 360, for example (I wonder how those Birch Leaves are going, heard they did well this season!) How the single page is rendered depends on your terminal emulator's capabilities and your settings (see below).
