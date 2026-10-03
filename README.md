@@ -326,11 +326,8 @@ texttv 100 | trans -b sv:en
 
 It's not going to be perfect, but you'll get the gist of it.
 
-## Note on AI use
-
-The author of this application has been writing code for over 30 years. Lately, 
-LLM agent-enhanced coding practices have rekindled my sense of awe at what's 
-possible. This project has been built using a range of tools, including [dan](https://github.com/dfallman/dan), [gitst](https://github.com/dfallman/gitst), and Anthropic's Claude Code.
+## How it's made
+Gitst is written in Rust, with help from tools like Anthropic's Claude Code. I've been writing code for over 30 years, and working with coding agents has rekindled my sense of awe at what code can do. They let me move faster, try more ideas, and test them more thoroughly than I would on my own.
 
 ## License
 
