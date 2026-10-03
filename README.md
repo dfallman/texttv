@@ -327,7 +327,7 @@ texttv 100 | trans -b sv:en
 It's not going to be perfect, but you'll get the gist of it.
 
 ## How it's made
-Gitst is written in Rust, with help from tools like Anthropic's Claude Code. I've been writing code for over 30 years, and working with coding agents has rekindled my sense of awe at what code can do. They let me move faster, try more ideas, and test them more thoroughly than I would on my own.
+TextTV is written in Rust, with help from tools like Anthropic's Claude Code. I've been writing code for over 30 years, and working with coding agents has rekindled my sense of awe at what code can do. They let me move faster, try more ideas, and test them more thoroughly than I would on my own.
 
 ## License
 
